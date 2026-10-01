@@ -1,3 +1,7 @@
+" ── 配置来源标记（install.sh / update.sh 识别用，勿删）────
+" vim_config-managed: https://github.com/Li2TeO4/vim_config
+let g:vim_config_managed = 'Li2TeO4/vim_config'
+
 " ── 基础 ──────────────────────────────────────────────
 syntax on
 set encoding=utf-8
@@ -535,6 +539,7 @@ function! s:ConfigCheckLines() abort
   endfor
   call add(l:lines, '[Vim] v' . v:version . '  ' . join(l:features, ' '))
   call add(l:lines, '[LSP可用] ' . (s:has_lsp ? '是' : '否（已跳过 LSP 配置）'))
+  call add(l:lines, '[来源] ' . get(g:, 'vim_config_managed', '未标记（不受 install/update 脚本管理）'))
   call add(l:lines, '')
 
   " 插件
