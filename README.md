@@ -18,6 +18,7 @@
 - [更新配置](#更新配置)
 - [换机自检](#换机自检)
 - [一键修复](#一键修复)
+- [系统包管理器补充 server](#系统包管理器补充-server)
 - [键位速查](#键位速查)
 - [LSP 与 Schema 校验](#lsp-与-schema-校验)
 - [主题](#主题)
@@ -52,6 +53,8 @@
   状态和补装入口。
 - **一键修复**：`:VimConfigFix` 自动补插件和 schema，并调用 vim-lsp-settings
   安装缺失的 LSP server。
+- **系统包补充**：`language-server-add.sh` 可用系统包管理器（pacman/apt/dnf/
+  zypper/apk/brew）自动补齐缺失的 server。
 
 ---
 
@@ -61,6 +64,7 @@
 vim_config/
 ├── install.sh        # 一键安装：备份原配置 + 部署 vimrc/schema + 装插件
 ├── update.sh         # 更新：校验归属后 git pull，再同步 vimrc/schema
+├── language-server-add.sh  # 用系统包管理器补充缺失的 LSP server
 ├── vimrc             # 主配置，安装后放到 ~/.vimrc
 ├── schemas/          # 本地 schema 缓存（TOML 常用文件 + docker-compose）
 │   ├── cargo.json
@@ -89,6 +93,7 @@ let g:vim_config_managed = 'Li2TeO4/vim_config'
 | curl / wget | `vim-plug` 自举、`:LspFetchSchemas` 下载 schema |
 | node / npm | 部分 LSP server 的安装方式（`vscode-json-language-server`、`yaml-language-server`、`vim-language-server` 等），也可用系统包管理器 |
 | 剪贴板 | 可选：Wayland 的 `wl-clipboard`，X11 的 `xclip` / `xsel`，macOS 自带 `pbcopy/pbpaste` |
+| 系统包管理器 | 可选；`language-server-add.sh` 支持 pacman / apt / dnf / zypper / apk / brew |
 | 终端 | 建议支持真彩色；不支持时 catppuccin 会走 cterm 回退 |
 
 > 如果 Vim 缺少 `timers/lambda/json_encode/job` 中的任何一项，配置会自动跳过
@@ -181,6 +186,13 @@ vim foo.json          # 先打开一个该类型的文件
 也可以手动安装；`vim-lsp-settings` 会自动在 `~/.local/share/vim-lsp-settings/servers`
 和 `$PATH` 里找可执行文件。
 
+如果更想交给系统包管理器（尤其 Arch），可以用仓库里的脚本：
+
+```bash
+./language-server-add.sh --dry-run   # 只看缺什么、会装哪些包
+./language-server-add.sh             # 确认后安装
+```
+
 > 本配置把 `:LspInstallServer` 做了安全包装：安装终端会开在**新窗口**里，
 > 启动后光标立即回到原窗口，不再被带进终端。终端里按 `jk`/`Esc` 退出输入模式，
 > `Ctrl+hjkl` 切换窗口，Terminal-Normal 下 `:q` 关闭安装窗口。
@@ -254,6 +266,51 @@ cd ~/code/vim_config
 
 修复动作和修复后的自检结果会显示在 `VimConfigFix` 窗口（按 `q` 关闭）。
 LSP server 是异步安装的，建议装完后重启 Vim 再 `:VimConfigCheck` 确认。
+
+---
+
+## 系统包管理器补充 server
+
+`language-server-add.sh` 提供另一种安装方式：用系统包管理器补齐缺失的语言服务。
+
+它和 `:VimConfigFix` / `:LspInstallServer` 的分工：
+
+| 方式 | 安装位置 | sudo |
+|---|---|---|
+| `:VimConfigFix` / `:LspInstallServer` | `~/.local/share/vim-lsp-settings/servers` | 不需要 |
+| `language-server-add.sh` | 系统包管理器（如 pacman 仓库） | 需要 |
+
+用法：
+
+```bash
+./language-server-add.sh --dry-run                 # 查看计划和将要执行的命令
+./language-server-add.sh                           # 交互确认后安装
+./language-server-add.sh -y                        # 不交互确认
+./language-server-add.sh --list                    # 当前包管理器的包名映射
+./language-server-add.sh --manager apt --dry-run   # 强制按某个包管理器预演
+```
+
+行为：
+
+- 已有系统 / 用户级 / vim-lsp-settings 安装的可执行文件会跳过，不重复装；
+- 支持 pacman / apt / dnf / zypper / apk / brew；
+- 包名与配置期望命令不一致时自动补兼容软链（如 Arch 的
+  `taplo-cli` 装完后补 `taplo-lsp`）；
+- 当前源里没有对应包时不硬装，会提示改用 `:LspInstallServer`；
+- 安装结束后验证命令是否可用，并提示用 `:VimConfigCheck` 确认。
+
+Arch 下各语言服务与包名：
+
+| server | Arch 包 | 备注 |
+|---|---|---|
+| `vscode-json-language-server` | `vscode-json-languageserver` | 包同时提供两个名字 |
+| `yaml-language-server` | `yaml-language-server` | |
+| `taplo-lsp` | `taplo-cli` | 装完补 `taplo-lsp` 软链 |
+| `bash-language-server` | `bash-language-server` | |
+| `docker-langserver` | `dockerfile-language-server` | |
+| `marksman` | `marksman` | |
+| `vim-language-server` | `vim-language-server` | 位于 archlinuxcn 仓库 |
+| `shellcheck`（可选） | `shellcheck` | bash 诊断增强 |
 
 ---
 
@@ -438,6 +495,10 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 
 **Q：想彻底停掉 LSP / schema 校验？**
 `<leader>lx`：停掉所有 server、清空诊断和 schema 校验；再按恢复。
+
+**Q：想用系统包管理器装 server？**
+运行 `./language-server-add.sh --dry-run` 看计划，再用 `./language-server-add.sh`
+安装。它只补缺失项，已有用户级/server 目录里的版本不会重复装。
 
 **Q：缺插件 / server / schema，不想手动一个个装？**
 `:VimConfigFix` 一键处理：插件走 `:PlugInstall`，schema 走 `:LspFetchSchemas`，
