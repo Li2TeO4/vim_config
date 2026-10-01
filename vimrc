@@ -174,8 +174,9 @@ endif
 " 下面的 LSP 配置需要 timers/lambda/json_encode/job；最小 Vim 会整段跳过
 if s:has_lsp
 " ── LSP（vim-lsp + vim-lsp-settings）─────────────────
-" settings 的初始化延迟到 VimEnter，避免拖慢启动；vim-lsp 本身很轻
-let g:lsp_settings_lazyload = 1
+" vim-lsp-settings 的 lazyload 会在 VimEnter 才挂 FileType 钩子，
+" 导致 vim 启动时直接打开的第一个文件错过 server 注册；实测开关对启动耗时无影响，这里关掉。
+let g:lsp_settings_lazyload = 0
 
 " 新版 vscode-json-language-server 只走 pull 诊断，必须声明该 capability
 let g:lsp_diagnostics_pull_enabled = 1
@@ -194,6 +195,26 @@ let g:lsp_settings_filetype_sh         = 'bash-language-server'
 let g:lsp_settings_filetype_dockerfile = 'docker-langserver'
 let g:lsp_settings_filetype_markdown   = 'marksman'
 let g:lsp_settings_filetype_vim        = 'vim-language-server'
+" 更多 Linux 配置文件相关
+let g:lsp_settings_filetype_xml        = 'lemminx'
+let g:lsp_settings_filetype_systemd    = 'systemd-lsp'
+let g:lsp_settings_filetype_cmake      = 'cmake-language-server'
+let g:lsp_settings_filetype_lua        = 'sumneko-lua-language-server'
+let g:lsp_settings_filetype_terraform  = 'terraform-ls'
+let g:lsp_settings_filetype_fish       = 'fish-lsp'
+" 构建相关配置（server 按需装：缺少时只有对应文件类型受影响）
+let g:lsp_settings_filetype_bzl        = 'starpls'
+let g:lsp_settings_filetype_just       = 'just-lsp'
+
+" 这些配置文件的 filetype Vim 核心识别不到或和 server 期望不一致，这里补齐
+augroup my_extra_config_filetypes
+  autocmd!
+  autocmd BufNewFile,BufRead *.service,*.socket,*.timer,*.mount,*.target,*.path,*.slice,*.scope,*.automount,*.swap,*.device if empty(&l:filetype) | setlocal filetype=systemd | endif
+  autocmd BufNewFile,BufRead *.tfvars setlocal filetype=terraform
+  " Vim 会把 *.star 认成 starlark，但 vim-lsp-settings 只有 bzl 键；
+  " 统一成 bzl 后 starpls 才能正常注册
+  autocmd BufNewFile,BufRead *.star if &l:filetype ==# 'starlark' || empty(&l:filetype) | setlocal filetype=bzl | endif
+augroup END
 
 " JSON LS 必须显式下发 validate.enable，否则不会产生诊断；
 " 这里同时复用 vim-lsp-settings 自带的 SchemaStore 目录，不丢校验能力。
@@ -278,6 +299,52 @@ endfunction
 augroup my_yaml_server
   autocmd!
   autocmd User lsp_setup call s:RegisterYamlServer()
+augroup END
+
+" fish-lsp：vim-lsp-settings 暂无 fish 配置，这里手动注册
+" （Arch 有 fish-lsp 包，启动命令是 fish-lsp start）
+function! s:FishCmd(exe, server_info) abort
+  if empty(a:exe)
+    return []
+  endif
+  return [a:exe, 'start']
+endfunction
+function! s:RegisterFishServer() abort
+  let l:exe = exists('*lsp_settings#exec_path') ? lsp_settings#exec_path('fish-lsp') : (executable('fish-lsp') ? 'fish-lsp' : '')
+  call lsp#register_server({
+  \ 'name': 'fish-lsp',
+  \ 'cmd': function('s:FishCmd', [l:exe]),
+  \ 'allowlist': ['fish'],
+  \ 'workspace_config': {},
+  \ })
+endfunction
+
+augroup my_fish_server
+  autocmd!
+  autocmd User lsp_setup call s:RegisterFishServer()
+augroup END
+
+" kdl-lsp：vim-lsp-settings 暂无 KDL 配置；Arch 有 kdl-lsp 包，
+" 常用于 Zellij 等工具的 KDL 配置文件
+function! s:KdlCmd(exe, server_info) abort
+  if empty(a:exe)
+    return []
+  endif
+  return [a:exe]
+endfunction
+function! s:RegisterKdlServer() abort
+  let l:exe = exists('*lsp_settings#exec_path') ? lsp_settings#exec_path('kdl-lsp') : (executable('kdl-lsp') ? 'kdl-lsp' : '')
+  call lsp#register_server({
+  \ 'name': 'kdl-lsp',
+  \ 'cmd': function('s:KdlCmd', [l:exe]),
+  \ 'allowlist': ['kdl'],
+  \ 'workspace_config': {},
+  \ })
+endfunction
+
+augroup my_kdl_server
+  autocmd!
+  autocmd User lsp_setup call s:RegisterKdlServer()
 augroup END
 
 " Schema 校验说明：
@@ -611,17 +678,29 @@ function! s:ConfigCheckLines() abort
     \ ['dockerfile', 'docker-langserver'],
     \ ['markdown', 'marksman'],
     \ ['vim', 'vim-language-server'],
+    \ ['xml', 'lemminx'],
+    \ ['systemd', 'systemd-lsp'],
+    \ ['cmake', 'cmake-language-server'],
+    \ ['lua', 'sumneko-lua-language-server'],
+    \ ['terraform', 'terraform-ls'],
+    \ ['fish', 'fish-lsp'],
+    \ ['bzl', 'starpls'],
+    \ ['just', 'just-lsp'],
+    \ ['kdl', 'kdl-lsp'],
     \ ]
     let l:missing_servers = []
     for [l:ft, l:cmd] in l:server_specs
       let l:path = s:CheckExec(l:cmd)
-      call add(l:lines, printf('  %-12s %-28s %s', l:ft, l:cmd, empty(l:path) ? '缺失' : 'OK  ' . l:path))
+      call add(l:lines, printf('  %-12s %-30s %s', l:ft, l:cmd, empty(l:path) ? '缺失' : 'OK  ' . l:path))
       if empty(l:path)
         call add(l:missing_servers, l:cmd)
       endif
     endfor
     if !empty(l:missing_servers)
-      call add(l:lines, '  -> 缺 ' . len(l:missing_servers) . ' 个：打开对应类型文件后执行 :LspInstallServer，或用系统包管理器安装')
+      call add(l:lines, '  -> 缺 ' . len(l:missing_servers) . ' 个：优先 :VimConfigFix；系统包安装用 ./language-server-add.sh')
+    endif
+    if empty(s:CheckExec('lemminx')) && empty(s:CheckExec('java'))
+      call add(l:lines, '  提示：xml(lemminx) 需要 Java；Arch 执行 ./language-server-add.sh 会自动装 java-runtime')
     endif
     call add(l:lines, '  shellcheck（可选，bash 诊断增强）: ' . (empty(s:CheckExec('shellcheck')) ? '缺失' : 'OK'))
   endif
@@ -749,6 +828,8 @@ endfunction
 if s:has_lsp
   augroup my_lsp_install_override
     autocmd!
+    " VimEnter 后用 timer 覆盖 vim-lsp-settings 定义的 :LspInstallServer，
+    " 保证插件初始化完成后命令才被替换，走安全安装包装。
     autocmd VimEnter * call timer_start(0, function('s:OverrideLspInstallCommand'))
   augroup END
 endif
@@ -756,6 +837,17 @@ endif
 " ── 一键修复 ──────────────────────────────────────────
 " :VimConfigFix 会尽量自动补齐：vim-plug 插件、catppuccin 主题、schema 缓存；
 " 缺失的 LSP server 会调用安全包装的安装器（后台终端异步安装）。
+function! s:ServerManualHint(cmd) abort
+  let l:hints = {
+  \ 'fish-lsp': '运行 ./language-server-add.sh（Arch 包名 fish-lsp），或手动安装后重启 Vim',
+  \ 'kdl-lsp': '运行 ./language-server-add.sh（Arch 包名 kdl-lsp），或手动安装后重启 Vim',
+  \ 'lemminx': '需要 Java；Arch 可运行 ./language-server-add.sh（会装 lemminx + java-runtime），或先装 Java 再用 :LspInstallServer',
+  \ 'starpls': '没有系统包，用 :LspInstallServer 从 GitHub release 安装，或手动安装后重启 Vim',
+  \ 'just-lsp': '运行 ./language-server-add.sh（Arch 包名 just-lsp），或 :LspInstallServer',
+  \ }
+  return get(l:hints, a:cmd, '请手动安装')
+endfunction
+
 function! s:ConfigFix() abort
   let l:log = []
   let l:actions = 0
@@ -856,18 +948,27 @@ function! s:ConfigFix() abort
     call add(l:log, '[LSP] 当前 Vim 缺少 timers/lambda/json/job，已跳过；请安装完整版 Vim')
   else
     let l:server_specs = [
-    \ ['json', 'vscode-json-language-server'],
-    \ ['yaml', 'yaml-language-server'],
-    \ ['toml', 'taplo-lsp'],
-    \ ['sh', 'bash-language-server'],
-    \ ['dockerfile', 'docker-langserver'],
-    \ ['markdown', 'marksman'],
-    \ ['vim', 'vim-language-server'],
+    \ ['json', 'vscode-json-language-server', 1],
+    \ ['yaml', 'yaml-language-server', 1],
+    \ ['toml', 'taplo-lsp', 1],
+    \ ['sh', 'bash-language-server', 1],
+    \ ['dockerfile', 'docker-langserver', 1],
+    \ ['markdown', 'marksman', 1],
+    \ ['vim', 'vim-language-server', 1],
+    \ ['xml', 'lemminx', executable('java') ? 1 : 0],
+    \ ['systemd', 'systemd-lsp', 1],
+    \ ['cmake', 'cmake-language-server', 1],
+    \ ['lua', 'sumneko-lua-language-server', 1],
+    \ ['terraform', 'terraform-ls', 1],
+    \ ['fish', 'fish-lsp', 0],
+    \ ['bzl', 'starpls', 1],
+    \ ['just', 'just-lsp', 1],
+    \ ['kdl', 'kdl-lsp', 0],
     \ ]
     let l:missing_servers = []
-    for [l:ft, l:cmd] in l:server_specs
+    for [l:ft, l:cmd, l:can_install] in l:server_specs
       if empty(s:CheckExec(l:cmd))
-        call add(l:missing_servers, [l:ft, l:cmd])
+        call add(l:missing_servers, [l:ft, l:cmd, l:can_install])
       endif
     endfor
 
@@ -878,15 +979,23 @@ function! s:ConfigFix() abort
     elseif !has('terminal')
       call add(l:log, '[LSP server] 有缺失，但当前 Vim 无 +terminal，无法自动安装；请手动安装')
     elseif !empty(globpath(&rtp, 'autoload/lsp_settings.vim'))
-      for [l:ft, l:cmd] in l:missing_servers
+      let l:started_install = 0
+      for [l:ft, l:cmd, l:can_install] in l:missing_servers
+        if l:can_install == 0
+          call add(l:log, printf('[LSP] %s 不自动安装：%s', l:cmd, s:ServerManualHint(l:cmd)))
+          continue
+        endif
         if s:InstallServerSafe(l:ft, l:cmd)
           call add(l:log, printf('[LSP] 已启动安装：%s（%s）', l:cmd, l:ft))
           let l:actions += 1
+          let l:started_install = 1
         else
-          call add(l:log, printf('[LSP] 启动安装失败：%s', l:cmd))
+          call add(l:log, printf('[LSP] 启动安装失败：%s（%s）', l:cmd, s:ServerManualHint(l:cmd)))
         endif
       endfor
-      call add(l:log, '[LSP] 安装器在后台终端异步运行；完成后建议重启 Vim，再 :VimConfigCheck')
+      if l:started_install
+        call add(l:log, '[LSP] 安装器在后台终端异步运行；完成后建议重启 Vim，再 :VimConfigCheck')
+      endif
     else
       call add(l:log, '[LSP server] 缺失：' . join(map(copy(l:missing_servers), 'v:val[1]'), ', '))
       call add(l:log, '[LSP server] vim-lsp-settings 不可用，请手动安装或用 :LspInstallServer')

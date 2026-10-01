@@ -93,6 +93,15 @@ SERVERS=(
   "dockerfile|Dockerfile|docker-langserver|"
   "markdown|Markdown|marksman|"
   "vim|Vim script|vim-language-server|"
+  "xml|XML|lemminx|"
+  "systemd|systemd|systemd-lsp|"
+  "cmake|CMake|cmake-language-server|"
+  "lua|Lua|sumneko-lua-language-server|lua-language-server"
+  "terraform|Terraform|terraform-ls|"
+  "fish|Fish|fish-lsp|"
+  "bzl|Bazel/Starlark|starpls|"
+  "just|just|just-lsp|"
+  "kdl|KDL|kdl-lsp|"
 )
 
 # 各系统包管理器对应的包名；查不到就返回空，脚本会跳过并给出提示
@@ -106,6 +115,15 @@ pkg_for() {
     pacman:dockerfile) echo dockerfile-language-server ;;
     pacman:markdown)   echo marksman ;;
     pacman:vim)        echo vim-language-server ;;
+    pacman:xml)        echo lemminx ;;
+    pacman:systemd)    echo systemd-lsp ;;
+    pacman:cmake)      echo cmake-language-server ;;
+    pacman:lua)        echo lua-language-server ;;
+    pacman:terraform)  echo terraform-ls ;;
+    pacman:fish)       echo fish-lsp ;;
+    pacman:just)       echo just-lsp ;;
+    pacman:kdl)        echo kdl-lsp ;;
+
     pacman:shellcheck) echo shellcheck ;;
 
     apt:json)          echo vscode-json-languageserver ;;
@@ -115,6 +133,14 @@ pkg_for() {
     apt:dockerfile)    echo dockerfile-language-server ;;
     apt:markdown)      echo marksman ;;
     apt:vim)           echo vim-language-server ;;
+    apt:xml)           echo lemminx ;;
+    apt:systemd)       echo systemd-lsp ;;
+    apt:cmake)         echo cmake-language-server ;;
+    apt:lua)           echo lua-language-server ;;
+    apt:terraform)     echo terraform-ls ;;
+    apt:fish)          echo fish-lsp ;;
+    apt:just)           echo just ;;
+
     apt:shellcheck)    echo shellcheck ;;
 
     dnf:json)          echo vscode-json-languageserver ;;
@@ -124,6 +150,14 @@ pkg_for() {
     dnf:dockerfile)    echo dockerfile-language-server ;;
     dnf:markdown)      echo marksman ;;
     dnf:vim)           echo vim-language-server ;;
+    dnf:xml)           echo lemminx ;;
+    dnf:systemd)       echo systemd-lsp ;;
+    dnf:cmake)         echo cmake-language-server ;;
+    dnf:lua)           echo lua-language-server ;;
+    dnf:terraform)     echo terraform-ls ;;
+    dnf:fish)          echo fish-lsp ;;
+    dnf:just)           echo just ;;
+
     dnf:shellcheck)    echo shellcheck ;;
 
     zypper:json)       echo vscode-json-languageserver ;;
@@ -133,6 +167,14 @@ pkg_for() {
     zypper:dockerfile) echo dockerfile-language-server ;;
     zypper:markdown)   echo marksman ;;
     zypper:vim)        echo vim-language-server ;;
+    zypper:xml)        echo lemminx ;;
+    zypper:systemd)    echo systemd-lsp ;;
+    zypper:cmake)      echo cmake-language-server ;;
+    zypper:lua)        echo lua-language-server ;;
+    zypper:terraform)  echo terraform-ls ;;
+    zypper:fish)       echo fish-lsp ;;
+    zypper:just)        echo just ;;
+
     zypper:shellcheck) echo shellcheck ;;
 
     apk:json)          echo vscode-json-languageserver ;;
@@ -142,6 +184,14 @@ pkg_for() {
     apk:dockerfile)    echo dockerfile-language-server ;;
     apk:markdown)      echo marksman ;;
     apk:vim)           echo vim-language-server ;;
+    apk:xml)           echo lemminx ;;
+    apk:systemd)       echo systemd-lsp ;;
+    apk:cmake)         echo cmake-language-server ;;
+    apk:lua)           echo lua-language-server ;;
+    apk:terraform)     echo terraform-ls ;;
+    apk:fish)          echo fish-lsp ;;
+    apk:just)           echo just ;;
+
     apk:shellcheck)    echo shellcheck ;;
 
     brew:json)         echo vscode-json-languageserver ;;
@@ -151,8 +201,33 @@ pkg_for() {
     brew:dockerfile)   echo dockerfile-language-server ;;
     brew:markdown)     echo marksman ;;
     brew:vim)          echo vim-language-server ;;
+    brew:xml)          echo lemminx ;;
+    brew:systemd)      echo systemd-lsp ;;
+    brew:cmake)        echo cmake-language-server ;;
+    brew:lua)          echo lua-language-server ;;
+    brew:terraform)    echo terraform-ls ;;
+    brew:fish)         echo fish-lsp ;;
+    brew:just)          echo just ;;
+
     brew:shellcheck)   echo shellcheck ;;
 
+    *) echo "" ;;
+  esac
+}
+
+manual_note() {
+  case "$1" in
+    bzl) echo "无系统包；请在 bzl 文件里用 :LspInstallServer，或手动下载 starpls" ;;
+    fish) echo "需要手动安装（Arch: fish-lsp 包；其他系统找上游发布包或用编辑器安装脚本）" ;;
+    just) echo "可用 :LspInstallServer 安装" ;;
+    kdl) echo "通过 :LspInstallServer 装不了；Arch 用 kdl-lsp 包，其他系统请手动编译安装" ;;
+    *) echo "" ;;
+  esac
+}
+
+pkg_note() {
+  case "$MGR:$1" in
+    pacman:lemminx) echo "需要 java-runtime，pacman 会自动安装这个依赖（体积较大）" ;;
     *) echo "" ;;
   esac
 }
@@ -221,8 +296,14 @@ for row in "${SERVERS[@]}"; do
   fi
   pkg="$(pkg_for "$key")"
   if [[ -z "$pkg" ]]; then
-    echo "[$label] 缺失，但 $MGR 没有配置对应包，请用 :VimConfigFix / :LspInstallServer"
-    PLAN_NOTES+=("$label: 无系统包，建议 :LspInstallServer")
+    note="$(manual_note "$key")"
+    if [[ -n "$note" ]]; then
+      echo "[$label] 缺失：$note"
+      PLAN_NOTES+=("$label: $note")
+    else
+      echo "[$label] 缺失，但 $MGR 没有配置对应包，请用 :VimConfigFix / :LspInstallServer"
+      PLAN_NOTES+=("$label: 无系统包，建议 :VimConfigFix / :LspInstallServer")
+    fi
     continue
   fi
   if ! pkg_available "$pkg"; then
@@ -231,6 +312,8 @@ for row in "${SERVERS[@]}"; do
     continue
   fi
   echo "[$label] 缺失 -> 计划安装系统包: $pkg"
+  pkg_note_text="$(pkg_note "$pkg")"
+  [[ -n "$pkg_note_text" ]] && echo "      注意: $pkg_note_text"
   add_pkg "$pkg"
   PLAN_KEYS+=("$key")
   PLAN_CMDS+=("$cmd")
@@ -286,7 +369,7 @@ fi
 
 # 包名和配置期望的命令名不一致时补兼容软链
 if (( DRY_RUN )); then
-  echo "[dry-run] 安装后会检查并补 taplo-lsp / vscode-json-language-server 兼容软链"
+  echo "[dry-run] 安装后会检查并补 taplo-lsp / vscode-json-language-server / sumneko-lua-language-server 兼容软链"
 else
   mkdir -p "$HOME/.local/bin"
   if command -v taplo >/dev/null 2>&1 && ! command -v taplo-lsp >/dev/null 2>&1; then
@@ -297,6 +380,12 @@ else
      && ! command -v vscode-json-language-server >/dev/null 2>&1; then
     ln -sf "$(command -v vscode-json-languageserver)" "$HOME/.local/bin/vscode-json-language-server"
     echo "已补兼容软链: vscode-json-language-server -> $(command -v vscode-json-languageserver)"
+  fi
+  # vim-lsp-settings 认的名字是 sumneko-lua-language-server，Arch 包二进制叫 lua-language-server
+  if command -v lua-language-server >/dev/null 2>&1 \
+     && ! command -v sumneko-lua-language-server >/dev/null 2>&1; then
+    ln -sf "$(command -v lua-language-server)" "$HOME/.local/bin/sumneko-lua-language-server"
+    echo "已补兼容软链: sumneko-lua-language-server -> $(command -v lua-language-server)"
   fi
 fi
 

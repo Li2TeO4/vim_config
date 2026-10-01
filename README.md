@@ -4,7 +4,8 @@
 > Catppuccin Mocha 主题，并带一键安装、一键修复、配置更新和换机自检脚本。
 >
 > 写代码用 Neovim（配置在 `~/.config/nvim`）；这份配置只服务于用 Vim 改
-> json/yaml/toml/shell/dockerfile/markdown/vim script 等文件的场景。
+> json/yaml/toml/shell/dockerfile/markdown/vim script/xml/systemd/cmake/
+> lua/terraform/fish/bazel/just/kdl 等配置文件的场景。
 
 ---
 
@@ -33,8 +34,11 @@
 ## 特性
 
 - **轻量启动**：不打开对应类型的文件就不会启动 LSP server，实测启动约 20–40ms。
-- **LSP**：`vim-lsp` + `vim-lsp-settings`，覆盖 json/jsonc、yaml、toml、bash、
-  dockerfile、markdown、vim script。
+- **LSP**：`vim-lsp` + `vim-lsp-settings`，目前覆盖：
+  - 配置格式：json/jsonc、yaml、toml、xml、kdl、just；
+  - 脚本 / 构建：bash、fish、vim script、cmake、lua、terraform；
+  - 容器 / 文档：dockerfile、markdown；
+  - 其他：systemd unit、bazel/starlark。
 - **自动补全**：`asyncomplete.vim` + `asyncomplete-lsp.vim`，Alt+j/k 选择，
   Tab/回车确认。
 - **Schema 校验**：
@@ -92,6 +96,7 @@ let g:vim_config_managed = 'Li2TeO4/vim_config'
 | git | 安装/更新、插件管理 |
 | curl / wget | `vim-plug` 自举、`:LspFetchSchemas` 下载 schema |
 | node / npm | 部分 LSP server 的安装方式（`vscode-json-language-server`、`yaml-language-server`、`vim-language-server` 等），也可用系统包管理器 |
+| Java（可选） | 使用 xml 的 `lemminx` 时需要；Arch 运行 `./language-server-add.sh` 会连带安装 `java-runtime` |
 | 剪贴板 | 可选：Wayland 的 `wl-clipboard`，X11 的 `xclip` / `xsel`，macOS 自带 `pbcopy/pbpaste` |
 | 系统包管理器 | 可选；`language-server-add.sh` 支持 pacman / apt / dnf / zypper / apk / brew |
 | 终端 | 建议支持真彩色；不支持时 catppuccin 会走 cterm 回退 |
@@ -173,15 +178,28 @@ vim foo.json          # 先打开一个该类型的文件
 
 覆盖的文件类型：
 
-| filetype | server |
-|---|---|
-| json / jsonc | `vscode-json-language-server` |
-| yaml | `yaml-language-server` |
-| toml | `taplo-lsp` |
-| sh | `bash-language-server`（可选 `shellcheck` 增强诊断） |
-| dockerfile | `docker-langserver` |
-| markdown | `marksman` |
-| vim | `vim-language-server` |
+| filetype / 文件 | server | 说明 |
+|---|---|---|
+| json / jsonc | `vscode-json-language-server` | SchemaStore 校验 |
+| yaml | `yaml-language-server` | compose / k8s / CI 等 schema |
+| toml | `taplo-lsp` | Cargo / pyproject 等 schema |
+| sh | `bash-language-server` | 可选 `shellcheck` 增强诊断 |
+| dockerfile | `docker-langserver` | |
+| markdown | `marksman` | |
+| vim | `vim-language-server` | |
+| xml | `lemminx` | 需要 Java；Arch 脚本会装 `java-runtime` |
+| systemd | `systemd-lsp` | `.service/.socket/.timer/.mount/.target/.path/.slice/.scope/.automount/.swap/.device` |
+| cmake | `cmake-language-server` | `CMakeLists.txt`、`*.cmake` |
+| lua | `sumneko-lua-language-server` | Arch 包二进制叫 `lua-language-server`，脚本会自动补软链 |
+| terraform | `terraform-ls` | `.tf`、`.tfvars`（`tfvars` 自动设成 terraform） |
+| fish | `fish-lsp` | 启动命令 `fish-lsp start`；vim-lsp-settings 无 fish 条目，本配置手动注册 |
+| bzl | `starpls` | `BUILD`、`WORKSPACE`、`*.bzl`；`*.star` 自动按 `bzl` 处理 |
+| just | `just-lsp` | `justfile` / `Justfile` / `.justfile` |
+| kdl | `kdl-lsp` | `*.kdl`（Zellij 等）；vim-lsp-settings 无 KDL 条目，本配置手动注册 |
+
+> systemd unit 扩展名在 Vim 核心中没有 filetype，本配置在
+> `BufNewFile/BufRead` 里补成 `systemd`；`*.tfvars` 设为 `terraform`，
+> `*.star` 设为 `bzl`，这样对应 server 才能正常挂上。
 
 也可以手动安装；`vim-lsp-settings` 会自动在 `~/.local/share/vim-lsp-settings/servers`
 和 `$PATH` 里找可执行文件。
@@ -260,7 +278,8 @@ cd ~/code/vim_config
 | 缺失插件 | `:PlugInstall --sync` |
 | 主题未生效 | 重新执行 `colorscheme catppuccin_mocha` |
 | schema 缓存缺失 | 调用 `:LspFetchSchemas` 下载 |
-| LSP server 缺失 | 调用 vim-lsp-settings 安装器，在后台终端异步安装 |
+| 可自动安装的 LSP server | 调用 vim-lsp-settings 安装器，在后台终端异步安装 |
+| 只能系统包安装的 server | `lemminx`（需 Java）、`fish-lsp`、`kdl-lsp` 会提示运行 `./language-server-add.sh` |
 | 剪贴板工具缺失 | 无法自动装系统包，只给出提示 |
 | Vim 特性不足 | 无法修复，提示需要完整版 Vim |
 
@@ -294,9 +313,12 @@ LSP server 是异步安装的，建议装完后重启 Vim 再 `:VimConfigCheck` 
 
 - 已有系统 / 用户级 / vim-lsp-settings 安装的可执行文件会跳过，不重复装；
 - 支持 pacman / apt / dnf / zypper / apk / brew；
-- 包名与配置期望命令不一致时自动补兼容软链（如 Arch 的
-  `taplo-cli` 装完后补 `taplo-lsp`）；
-- 当前源里没有对应包时不硬装，会提示改用 `:LspInstallServer`；
+- 包名与配置期望命令不一致时自动补兼容软链：`taplo` → `taplo-lsp`、
+  `vscode-json-languageserver` → `vscode-json-language-server`、
+  `lua-language-server` → `sumneko-lua-language-server`；
+- 没有对应包的 server 会明确提示：`starpls` 用 `:LspInstallServer`；
+  `fish-lsp` / `kdl-lsp` 没有 vim-lsp-settings 安装器，Arch 走系统包，
+  其他系统需手动安装可执行文件；
 - 安装结束后验证命令是否可用，并提示用 `:VimConfigCheck` 确认。
 
 Arch 下各语言服务与包名：
@@ -310,6 +332,15 @@ Arch 下各语言服务与包名：
 | `docker-langserver` | `dockerfile-language-server` | |
 | `marksman` | `marksman` | |
 | `vim-language-server` | `vim-language-server` | 位于 archlinuxcn 仓库 |
+| `lemminx` | `lemminx` | 会拉取 `java-runtime`（体积较大） |
+| `systemd-lsp` | `systemd-lsp` | |
+| `cmake-language-server` | `cmake-language-server` | |
+| `sumneko-lua-language-server` | `lua-language-server` | 装完补 `sumneko-lua-language-server` 软链 |
+| `terraform-ls` | `terraform-ls` | |
+| `fish-lsp` | `fish-lsp` | |
+| `starpls` | 无 Arch 包 | 打开 `bzl` 文件后 `:LspInstallServer` 安装 |
+| `just-lsp` | `just-lsp` | |
+| `kdl-lsp` | `kdl-lsp` | |
 | `shellcheck`（可选） | `shellcheck` | bash 诊断增强 |
 
 ---
@@ -473,6 +504,9 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 - **缺插件自动安装**：启动时发现插件目录缺失，VimEnter 自动 `:PlugInstall` 并
   重新加载 vimrc。
 - **特性守卫**：Vim 缺少 LSP 所需特性时整段跳过，最小构建也能正常启动。
+- **首屏文件不漏 server**：关闭了 vim-lsp-settings 的 VimEnter lazyload，
+  保证 `vim foo.json` 这种直接带文件启动的方式也能在读到文件时完成 server 注册；
+  实测开关对启动耗时无明显影响。
 - **剪贴板多后端**：Wayland / X11 / macOS 自动探测；Vim 自带 `+clipboard` 时
   不接管。
 - **Schema 本地优先、远程回退**：换机器没有缓存时也能工作。
@@ -487,8 +521,22 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 首次需要下载 vim-plug、插件或 LSP server。之后正常打开配置文件在几十毫秒级别。
 
 **Q：某个文件没有补全 / 没有诊断？**
-先 `:VimConfigCheck` 看对应 server 是否缺失；缺则打开该类型文件后
-`:LspInstallServer`。也可以检查 `:messages`。
+先 `:VimConfigCheck` 看对应 server 是否缺失。能自动安装的打开该类型文件后
+`:LspInstallServer`；`lemminx`、`fish-lsp`、`kdl-lsp` 走
+`./language-server-add.sh`；`starpls` 用 `:LspInstallServer`。
+如果 server 显示 OK 但仍不生效，用 `:set ft?` 确认 filetype 是否和手册里一致，
+并检查 `:messages`。
+
+**Q：打开 `.service` / `.socket` / `.timer` / `*.tfvars` 没有 LSP？**
+这些扩展名 Vim 核心不认识，本配置会自动补 filetype：
+systemd unit 设为 `systemd`，`*.tfvars` 设为 `terraform`，`*.star` 设为 `bzl`。
+如果还是不对，手动执行 `:set ft=systemd`（或对应 ft）后再看 `:LspStatus`。
+
+**Q：为什么 `fish-lsp` / `kdl-lsp` 用 `:LspInstallServer` 装不了？**
+vim-lsp-settings 没有这两个 server 的安装条目，本配置是手动注册的：
+Arch 用 `./language-server-add.sh` 安装 `fish-lsp` / `kdl-lsp` 包，
+其他系统需手动安装可执行文件后重启 Vim。`starpls` 有 vim-lsp-settings 安装器，
+但没有 Arch 包，所以用 `:LspInstallServer`。
 
 **Q：不想用补全了？**
 `<leader>lc` 关闭自动弹出；再按恢复。补全关掉不影响诊断。
@@ -502,7 +550,9 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 
 **Q：缺插件 / server / schema，不想手动一个个装？**
 `:VimConfigFix` 一键处理：插件走 `:PlugInstall`，schema 走 `:LspFetchSchemas`，
-缺失的 LSP server 会调用 vim-lsp-settings 安装器。装完按提示重启 Vim 再自检。
+能自动安装的 LSP server 会调用 vim-lsp-settings 安装器；
+`lemminx`、`fish-lsp`、`kdl-lsp` 等只能系统包安装的会给出
+`./language-server-add.sh` 提示。装完按提示重启 Vim 再自检。
 
 **Q：大写 Y 复制会卡住？**
 已在 clipboard provider 里修复：复制命令会把 stdout/stderr 重定向到
