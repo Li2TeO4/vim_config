@@ -1,7 +1,7 @@
 # vim_config
 
 > 面向“改配置文件”场景的轻量 Vim 配置：启动快、支持 LSP + Schema 校验、
-> Catppuccin Mocha 主题，并带一键安装、配置更新和换机自检脚本。
+> Catppuccin Mocha 主题，并带一键安装、一键修复、配置更新和换机自检脚本。
 >
 > 写代码用 Neovim（配置在 `~/.config/nvim`）；这份配置只服务于用 Vim 改
 > json/yaml/toml/shell/dockerfile/markdown/vim script 等文件的场景。
@@ -17,6 +17,7 @@
 - [首次启动与首次使用](#首次启动与首次使用)
 - [更新配置](#更新配置)
 - [换机自检](#换机自检)
+- [一键修复](#一键修复)
 - [键位速查](#键位速查)
 - [LSP 与 Schema 校验](#lsp-与-schema-校验)
 - [主题](#主题)
@@ -43,11 +44,14 @@
   - docker-compose 使用本地 `compose-spec.json`。
 - **主题**：官方 `catppuccin/vim`，Mocha 配色 + 透明背景，行号 / 注释颜色对齐
   Neovim 那边的配置。
-- **系统剪贴板**：`Y` / `P` 走系统剪贴板，Wayland / X11 / macOS 自动探测。
+- **系统剪贴板**：`Y` / `P` 走系统剪贴板，Wayland / X11 / macOS 自动探测；
+  复制命令做了 stdout/stderr 重定向，避免 `wl-copy`/`xclip` fork 常驻进程导致 `Y` 卡住。
 - **可移植**：XDG 路径、`vim-plug` 自举、缺插件自动安装、schema 本地优先 /
   远程回退、最小 Vim 自动跳过 LSP。
 - **换机自检**：`:VimConfigCheck` 一次列出特性、插件、server、schema、剪贴板等
   状态和补装入口。
+- **一键修复**：`:VimConfigFix` 自动补插件和 schema，并调用 vim-lsp-settings
+  安装缺失的 LSP server。
 
 ---
 
@@ -136,10 +140,11 @@ vim
    git clone 多级回退下载 vim-plug；
 2. 如果插件目录缺失，VimEnter 时自动执行 `:PlugInstall` 并重新加载配置。
 
-进入 Vim 后建议先自检：
+进入 Vim 后建议先自检；缺东西可以直接跑一键修复：
 
 ```vim
-:VimConfigCheck
+:VimConfigCheck   " 看缺什么
+:VimConfigFix     " 能自动补的自动补
 ```
 
 会打开一个只读窗口（按 `q` 关闭），列出缺什么。补装入口：
@@ -225,6 +230,28 @@ cd ~/code/vim_config
 
 ---
 
+## 一键修复
+
+```vim
+:VimConfigFix
+```
+
+`VimConfigFix` 会尽量自动处理：
+
+| 项目 | 自动修复方式 |
+|---|---|
+| 缺失插件 | `:PlugInstall --sync` |
+| 主题未生效 | 重新执行 `colorscheme catppuccin_mocha` |
+| schema 缓存缺失 | 调用 `:LspFetchSchemas` 下载 |
+| LSP server 缺失 | 调用 vim-lsp-settings 安装器，在后台终端异步安装 |
+| 剪贴板工具缺失 | 无法自动装系统包，只给出提示 |
+| Vim 特性不足 | 无法修复，提示需要完整版 Vim |
+
+修复动作和修复后的自检结果会显示在 `VimConfigFix` 窗口（按 `q` 关闭）。
+LSP server 是异步安装的，建议装完后重启 Vim 再 `:VimConfigCheck` 确认。
+
+---
+
 ## 键位速查
 
 `<leader>` = 空格。
@@ -282,6 +309,7 @@ cd ~/code/vim_config
 | 命令 | 功能 |
 |---|---|
 | `:VimConfigCheck` | 换机自检 |
+| `:VimConfigFix` | 一键修复（插件/schema 自动补，缺失 server 调安装器） |
 | `:LspFetchSchemas` | 下载/补齐 5 个本地 schema 缓存 |
 | `:LspInstallServer` | 为当前文件类型安装 LSP server |
 | `:LspUninstallServer <name>` | 卸载指定 server |
@@ -389,6 +417,15 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 
 **Q：想彻底停掉 LSP / schema 校验？**
 `<leader>lx`：停掉所有 server、清空诊断和 schema 校验；再按恢复。
+
+**Q：缺插件 / server / schema，不想手动一个个装？**
+`:VimConfigFix` 一键处理：插件走 `:PlugInstall`，schema 走 `:LspFetchSchemas`，
+缺失的 LSP server 会调用 vim-lsp-settings 安装器。装完按提示重启 Vim 再自检。
+
+**Q：大写 Y 复制会卡住？**
+已在 clipboard provider 里修复：复制命令会把 stdout/stderr 重定向到
+`/dev/null`，避免 `wl-copy`/`xclip` fork 出来的常驻进程让 Vim 的 `system()`
+一直等 pipe EOF。更新配置后即可生效。
 
 **Q：Alt+j/k 没反应？**
 部分终端把 Alt 发成 ESC 前缀，配置里已经用 `<Esc>j/k` 做了兜底，但只在补全

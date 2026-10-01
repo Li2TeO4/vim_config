@@ -81,17 +81,21 @@ vnoremap P "+P
 " 注意：不设 clipboard=unnamedplus，普通 y/p 仍走 Vim 内部寄存器。
 if has('clipboard_provider') && !has('clipboard')
   function! s:DetectClipBackend() abort
+    " copy 命令必须重定向 stdout/stderr 到 /dev/null：
+    " wl-copy / xclip / xsel 写完剪贴板后会 fork 一个常驻进程继续持有 selection，
+    " 该子进程若继承 Vim 的 stdout pipe，Vim 的 system() 会一直等 pipe EOF，
+    " 表现为大写 Y 复制“卡死”（剪贴板其实已经写成功）。
     if !empty($WAYLAND_DISPLAY) && executable('wl-copy') && executable('wl-paste')
-      return {'name': 'wl-clipboard', 'copy': ['wl-copy'], 'paste': ['wl-paste', '--no-newline']}
+      return {'name': 'wl-clipboard', 'copy': 'wl-copy >/dev/null 2>&1', 'paste': 'wl-paste --no-newline'}
     endif
     if !empty($DISPLAY) && executable('xclip')
-      return {'name': 'xclip', 'copy': ['xclip', '-selection', 'clipboard'], 'paste': ['xclip', '-selection', 'clipboard', '-o']}
+      return {'name': 'xclip', 'copy': 'xclip -selection clipboard >/dev/null 2>&1', 'paste': 'xclip -selection clipboard -o'}
     endif
     if !empty($DISPLAY) && executable('xsel')
-      return {'name': 'xsel', 'copy': ['xsel', '--clipboard', '--input'], 'paste': ['xsel', '--clipboard', '--output']}
+      return {'name': 'xsel', 'copy': 'xsel --clipboard --input >/dev/null 2>&1', 'paste': 'xsel --clipboard --output'}
     endif
     if executable('pbcopy') && executable('pbpaste')
-      return {'name': 'pbcopy', 'copy': ['pbcopy'], 'paste': ['pbpaste']}
+      return {'name': 'pbcopy', 'copy': 'pbcopy >/dev/null 2>&1', 'paste': 'pbpaste'}
     endif
     return {}
   endfunction
@@ -645,25 +649,199 @@ function! s:ConfigCheckLines() abort
   call add(l:lines, '[PATH] ' . (stridx($PATH, expand('~/.local/bin')) >= 0 ? '包含 ~/.local/bin' : '未包含 ~/.local/bin'))
   call add(l:lines, '')
   call add(l:lines, '补装入口：插件 :PlugInstall；LSP server :LspInstallServer；schema :LspFetchSchemas')
+  call add(l:lines, '也可以执行 :VimConfigFix 尝试一键自动修复')
   call add(l:lines, '按 q 关闭本窗口')
   return l:lines
 endfunction
 
-function! s:ConfigCheck() abort
-  let l:lines = s:ConfigCheckLines()
-  let l:buf = bufnr('VimConfigCheck')
+" 把行列表显示在指定名称的只读临时窗口里（VimConfigCheck / VimConfigFix 共用）
+function! s:ShowScratch(name, lines) abort
+  let l:buf = bufnr(a:name)
   if l:buf != -1 && bufexists(l:buf)
     execute 'botright sbuffer' l:buf
   else
     botright new
-    silent! file VimConfigCheck
+    silent! execute 'file' fnameescape(a:name)
   endif
   setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
   setlocal modifiable
   silent! %delete _
-  call setline(1, l:lines)
+  call setline(1, a:lines)
   setlocal nomodifiable
   normal! gg
 endfunction
 
+function! s:ConfigCheck() abort
+  call s:ShowScratch('VimConfigCheck', s:ConfigCheckLines())
+endfunction
+
+" ── 一键修复 ──────────────────────────────────────────
+" :VimConfigFix 会尽量自动补齐：vim-plug 插件、catppuccin 主题、schema 缓存；
+" 缺失的 LSP server 会调用 vim-lsp-settings 的安装器（后台终端异步安装）。
+function! s:ConfigFix() abort
+  let l:log = []
+  let l:actions = 0
+  let l:need_restart = 0
+  call add(l:log, 'Vim 配置一键修复  ' . strftime('%Y-%m-%d %H:%M'))
+  call add(l:log, repeat('=', 58))
+  call add(l:log, '')
+
+  " 1) 插件
+  let l:plugin_specs = [
+  \ ['vim-plug', expand('~/.vim/autoload/plug.vim'), 'file'],
+  \ ['vim-surround', expand('~/.vim/plugged/vim-surround'), 'dir'],
+  \ ['vim-lastplace', expand('~/.vim/plugged/vim-lastplace'), 'dir'],
+  \ ['catppuccin', expand('~/.vim/plugged/catppuccin'), 'dir'],
+  \ ]
+  if s:has_lsp
+    let l:plugin_specs += [
+    \ ['vim-lsp', expand('~/.vim/plugged/vim-lsp'), 'dir'],
+    \ ['vim-lsp-settings', expand('~/.vim/plugged/vim-lsp-settings'), 'dir'],
+    \ ['asyncomplete.vim', expand('~/.vim/plugged/asyncomplete.vim'), 'dir'],
+    \ ['asyncomplete-lsp.vim', expand('~/.vim/plugged/asyncomplete-lsp.vim'), 'dir'],
+    \ ]
+  endif
+  let l:missing_plugins = []
+  let l:missing_lsp_plugin = 0
+  for [l:name, l:path, l:kind] in l:plugin_specs
+    let l:ok = l:kind ==# 'file' ? filereadable(l:path) : isdirectory(l:path)
+    if !l:ok
+      call add(l:missing_plugins, l:name)
+      if l:name =~# 'vim-lsp\|asyncomplete'
+        let l:missing_lsp_plugin = 1
+      endif
+    endif
+  endfor
+
+  if empty(l:missing_plugins)
+    call add(l:log, '[插件] 已齐全')
+  elseif exists(':PlugInstall')
+    call add(l:log, '[插件] 缺失：' . join(l:missing_plugins, ', '))
+    call add(l:log, '[插件] 执行 :PlugInstall --sync ...')
+    try
+      execute 'PlugInstall --sync'
+      call add(l:log, '[插件] 安装流程结束')
+      let l:actions += 1
+      if l:missing_lsp_plugin
+        let l:need_restart = 1
+        call add(l:log, '[插件] LSP 相关插件是本次补装的，需要重启 Vim 才会加载')
+      endif
+    catch
+      call add(l:log, '[插件] 安装出错：' . v:exception)
+    endtry
+  else
+    call add(l:log, '[插件] 缺失但 vim-plug 不可用：检查网络/curl/git 后重启 Vim 让自举重试')
+  endif
+  call add(l:log, '')
+
+  " 2) 主题
+  if !empty(globpath(&rtp, 'colors/catppuccin_mocha.vim'))
+    if get(g:, 'colors_name', '') !=# 'catppuccin_mocha'
+      silent! colorscheme catppuccin_mocha
+      call add(l:log, '[主题] 已重新应用 catppuccin_mocha')
+      let l:actions += 1
+    else
+      call add(l:log, '[主题] catppuccin_mocha 正常')
+    endif
+  else
+    call add(l:log, '[主题] 配色缺失，请先补齐插件（:PlugInstall 或重启自动安装）')
+  endif
+  call add(l:log, '')
+
+  " 3) schema 缓存
+  let l:schema_files = ['cargo.json', 'pyproject.json', 'rustfmt.json', 'rust-toolchain.json', 'compose-spec.json']
+  let l:missing_schema = []
+  for l:name in l:schema_files
+    if !filereadable(s:SchemaPath(l:name))
+      call add(l:missing_schema, l:name)
+    endif
+  endfor
+
+  if empty(l:missing_schema)
+    call add(l:log, '[Schema] 缓存完整 (' . len(l:schema_files) . '/' . len(l:schema_files) . ')')
+  elseif !executable('curl') && !executable('wget')
+    call add(l:log, '[Schema] 缺失但 curl/wget 不可用，无法自动下载：' . join(l:missing_schema, ', '))
+  else
+    call add(l:log, '[Schema] 缺失：' . join(l:missing_schema, ', ') . '，执行 :LspFetchSchemas ...')
+    try
+      call s:FetchSchemas()
+      call add(l:log, '[Schema] 下载流程结束')
+      let l:actions += 1
+    catch
+      call add(l:log, '[Schema] 下载出错：' . v:exception)
+    endtry
+  endif
+  call add(l:log, '')
+
+  " 4) LSP server
+  if !s:has_lsp
+    call add(l:log, '[LSP] 当前 Vim 缺少 timers/lambda/json/job，已跳过；请安装完整版 Vim')
+  else
+    let l:server_specs = [
+    \ ['json', 'vscode-json-language-server'],
+    \ ['yaml', 'yaml-language-server'],
+    \ ['toml', 'taplo-lsp'],
+    \ ['sh', 'bash-language-server'],
+    \ ['dockerfile', 'docker-langserver'],
+    \ ['markdown', 'marksman'],
+    \ ['vim', 'vim-language-server'],
+    \ ]
+    let l:missing_servers = []
+    for [l:ft, l:cmd] in l:server_specs
+      if empty(s:CheckExec(l:cmd))
+        call add(l:missing_servers, [l:ft, l:cmd])
+      endif
+    endfor
+
+    if empty(l:missing_servers)
+      call add(l:log, '[LSP server] 已齐全')
+    elseif l:need_restart
+      call add(l:log, '[LSP server] 有缺失，但 LSP 插件刚补装；请重启 Vim 后再执行 :VimConfigFix')
+    elseif !has('terminal')
+      call add(l:log, '[LSP server] 有缺失，但当前 Vim 无 +terminal，无法自动安装；请手动安装')
+    elseif exists('*lsp_settings#install_server')
+      for [l:ft, l:cmd] in l:missing_servers
+        try
+          call lsp_settings#install_server(l:ft, l:cmd)
+          call add(l:log, printf('[LSP] 已启动安装：%s（%s）', l:cmd, l:ft))
+          let l:actions += 1
+        catch
+          call add(l:log, printf('[LSP] 启动安装失败：%s -> %s', l:cmd, v:exception))
+        endtry
+      endfor
+      call add(l:log, '[LSP] 安装器在后台终端异步运行；完成后建议重启 Vim，再 :VimConfigCheck')
+    else
+      call add(l:log, '[LSP server] 缺失：' . join(map(copy(l:missing_servers), 'v:val[1]'), ', '))
+      call add(l:log, '[LSP server] vim-lsp-settings 不可用，请手动安装或用 :LspInstallServer')
+    endif
+  endif
+  call add(l:log, '')
+
+  " 5) 剪贴板 / 显示
+  if has('clipboard')
+    call add(l:log, '[剪贴板] Vim 内建 +clipboard 可用')
+  elseif has('clipboard_provider')
+    if exists('*s:ClipBackend') && !empty(s:ClipBackend())
+      call add(l:log, '[剪贴板] 外部桥接可用：' . s:ClipBackend()['name'])
+    else
+      call add(l:log, '[剪贴板] 不可用，无法自动装包；请安装 wl-clipboard（Wayland）或 xclip/xsel（X11）')
+    endif
+  else
+    call add(l:log, '[剪贴板] 当前 Vim 无 clipboard 支持，无法修复')
+  endif
+  if has('termguicolors') && (has('gui_running') || $COLORTERM =~? 'truecolor\|24bit' || &t_Co >= 256) && !&termguicolors
+    set termguicolors
+    call add(l:log, '[显示] 已启用 termguicolors')
+    let l:actions += 1
+  endif
+  call add(l:log, '')
+
+  " 6) 修复后重新自检
+  call add(l:log, '──── 修复后自检（异步安装可能尚未完成）────')
+  call extend(l:log, s:ConfigCheckLines())
+  call s:ShowScratch('VimConfigFix', l:log)
+  echo printf('VimConfigFix：执行了 %d 项修复/安装动作，结果见 VimConfigFix 窗口', l:actions)
+endfunction
+
 command! VimConfigCheck call s:ConfigCheck()
+command! VimConfigFix call s:ConfigFix()
