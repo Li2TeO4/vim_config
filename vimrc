@@ -19,6 +19,9 @@ set softtabstop=4
 set noexpandtab
 set autoindent
 
+" 窗口分隔：竖向分隔线用更明显的 │（默认 | 太细，分屏边界看不清）
+set fillchars=vert:│,fold:-,eob:~,lastline:@
+
 " ── 环境路径 / 可移植性帮助函数 ────────────────────────
 " 常见的用户级可执行目录补进 PATH（去重；Linux / macOS / Win 都可用）
 function! s:PrependPath(dir) abort
@@ -62,12 +65,28 @@ nnoremap <leader>Q  :q!<CR>
 nnoremap <S-H>      ^
 nnoremap <S-L>      $
 
+" 普通模式窗口间移动（对应 nvim 的 <C-hjkl>）
+nnoremap <C-h> <C-w>h
+nnoremap <C-j> <C-w>j
+nnoremap <C-k> <C-w>k
+nnoremap <C-l> <C-w>l
+
 inoremap jk <Esc>
 inoremap <C-h> <Left>
 inoremap <C-j> <Down>
 inoremap <C-k> <Up>
 inoremap <C-l> <Right>
 inoremap <C-o> <Esc>o
+
+" 终端模式：jk/Esc 退出输入；Ctrl+hjkl 直接切窗口（不用先退 normal）
+if has('terminal')
+  tnoremap <Esc> <C-\><C-n>
+  tnoremap jk    <C-\><C-n>
+  tnoremap <C-h> <C-\><C-n><C-w>h
+  tnoremap <C-j> <C-\><C-n><C-w>j
+  tnoremap <C-k> <C-\><C-n><C-w>k
+  tnoremap <C-l> <C-\><C-n><C-w>l
+endif
 
 " Y/P 走系统剪贴板（原先只写了 "+ 寄存器，但没有可用 provider，实际抓不到）
 nnoremap Y "+yy
@@ -491,12 +510,14 @@ if !empty(globpath(&rtp, 'colors/catppuccin_mocha.vim'))
   hi Popup        guibg=NONE ctermbg=NONE
   hi PopupTitle   guibg=NONE ctermbg=NONE
 
-  " 状态栏 / 标签栏跟随 nvim 的透明处理
-  hi StatusLine   guibg=NONE ctermbg=NONE
-  hi StatusLineNC guibg=NONE ctermbg=NONE
+  " 标签栏保持透明；状态栏保留 catppuccin 自带底色：
+  " 横向分屏的分隔就是上层窗口的状态栏，透明的话上下窗口边界会看不见
   hi TabLine      guibg=NONE ctermbg=NONE
   hi TabLineFill  guibg=NONE ctermbg=NONE
   hi TabLineSel   guibg=NONE ctermbg=NONE
+
+  " 竖向分隔线加粗 lavender 色，分屏关系更清楚（配合 fillchars=vert:│）
+  hi VertSplit    guifg=#b4befe ctermfg=147 gui=bold cterm=bold guibg=NONE ctermbg=NONE
 
   " ── 行号 / 注释色：搬 nvim chadrc 的 hl_override ────────
   " 相对行号（LineNr）与当前行绝对行号（CursorLineNr）
@@ -675,9 +696,66 @@ function! s:ConfigCheck() abort
   call s:ShowScratch('VimConfigCheck', s:ConfigCheckLines())
 endfunction
 
+" ── LSP server 安装（安全包装）────────────────────────
+" 原版 :LspInstallServer 会直接在“当前窗口”term_start，光标会被带进安装终端，
+" 不容易退出。这里改成：在下方新窗口里跑安装，启动后立刻把光标还给原窗口。
+function! s:InstallServerSafe(ft, name) abort
+  let l:origin_tab = tabpagenr()
+  let l:origin_win = win_getid()
+  let l:before_wins = winnr('$')
+  let l:started = 0
+  try
+    " Vim 的 term_start() 默认会自己新开窗口放终端；这里不额外开窗口，
+    " 安装启动后马上把焦点还给原窗口即可，避免“光标被带进安装终端”。
+    call lsp_settings#install_server(a:ft, a:name)
+  catch
+    echo 'LspInstallServer 启动失败: ' . v:exception
+  endtry
+  if winnr('$') > l:before_wins || &l:buftype ==# 'terminal'
+    let l:started = 1
+    " 顺手把安装终端里的行号/cursorline 关掉，输出更干净
+    setlocal nonumber norelativenumber nocursorline nolist
+  endif
+  if tabpagenr() != l:origin_tab
+    execute 'tabnext' l:origin_tab
+  endif
+  call win_gotoid(l:origin_win)
+  if l:started
+    echo '安装终端在新窗口里运行；jk/Esc 退出终端输入，Ctrl+hjkl 切换窗口'
+  endif
+  return l:started
+endfunction
+
+function! s:SafeLspInstallServer(bang, name) abort
+  if empty(&l:filetype)
+    echo 'LspInstallServer: 当前 buffer 没有 filetype，先打开对应类型文件'
+    return
+  endif
+  call s:InstallServerSafe(&l:filetype, a:name)
+endfunction
+
+" 等所有 VimEnter 初始化（含 vim-lsp-settings 注册命令）结束后再覆盖命令
+function! s:OverrideLspInstallCommand(...) abort
+  if empty(globpath(&rtp, 'autoload/lsp_settings.vim'))
+    return
+  endif
+  if exists('*lsp_settings#complete_install')
+    command! -bang -nargs=? -complete=customlist,lsp_settings#complete_install LspInstallServer call s:SafeLspInstallServer(<bang>0, <q-args>)
+  else
+    command! -bang -nargs=? LspInstallServer call s:SafeLspInstallServer(<bang>0, <q-args>)
+  endif
+endfunction
+
+if s:has_lsp
+  augroup my_lsp_install_override
+    autocmd!
+    autocmd VimEnter * call timer_start(0, function('s:OverrideLspInstallCommand'))
+  augroup END
+endif
+
 " ── 一键修复 ──────────────────────────────────────────
 " :VimConfigFix 会尽量自动补齐：vim-plug 插件、catppuccin 主题、schema 缓存；
-" 缺失的 LSP server 会调用 vim-lsp-settings 的安装器（后台终端异步安装）。
+" 缺失的 LSP server 会调用安全包装的安装器（后台终端异步安装）。
 function! s:ConfigFix() abort
   let l:log = []
   let l:actions = 0
@@ -799,15 +877,14 @@ function! s:ConfigFix() abort
       call add(l:log, '[LSP server] 有缺失，但 LSP 插件刚补装；请重启 Vim 后再执行 :VimConfigFix')
     elseif !has('terminal')
       call add(l:log, '[LSP server] 有缺失，但当前 Vim 无 +terminal，无法自动安装；请手动安装')
-    elseif exists('*lsp_settings#install_server')
+    elseif !empty(globpath(&rtp, 'autoload/lsp_settings.vim'))
       for [l:ft, l:cmd] in l:missing_servers
-        try
-          call lsp_settings#install_server(l:ft, l:cmd)
+        if s:InstallServerSafe(l:ft, l:cmd)
           call add(l:log, printf('[LSP] 已启动安装：%s（%s）', l:cmd, l:ft))
           let l:actions += 1
-        catch
-          call add(l:log, printf('[LSP] 启动安装失败：%s -> %s', l:cmd, v:exception))
-        endtry
+        else
+          call add(l:log, printf('[LSP] 启动安装失败：%s', l:cmd))
+        endif
       endfor
       call add(l:log, '[LSP] 安装器在后台终端异步运行；完成后建议重启 Vim，再 :VimConfigCheck')
     else

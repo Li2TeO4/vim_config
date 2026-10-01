@@ -181,6 +181,11 @@ vim foo.json          # 先打开一个该类型的文件
 也可以手动安装；`vim-lsp-settings` 会自动在 `~/.local/share/vim-lsp-settings/servers`
 和 `$PATH` 里找可执行文件。
 
+> 本配置把 `:LspInstallServer` 做了安全包装：安装终端会开在**新窗口**里，
+> 启动后光标立即回到原窗口，不再被带进终端。终端里按 `jk`/`Esc` 退出输入模式，
+> `Ctrl+hjkl` 切换窗口，Terminal-Normal 下 `:q` 关闭安装窗口。
+> `:VimConfigFix` 安装 server 时也走同一条安全路径。
+
 ---
 
 ## 更新配置
@@ -264,6 +269,7 @@ LSP server 是异步安装的，建议装完后重启 Vim 再 `:VimConfigCheck` 
 | `<C-h/j/k/l>` | i | 插入模式方向键 |
 | `<C-o>` | i | 插入模式向下新开一行 |
 | `<S-H>` / `<S-L>` | n | 跳到行首 / 行尾 |
+| `<C-h/j/k/l>` | n | 窗口间移动（对应 nvim） |
 | `ww` | n | 保存 |
 | `<leader>wq` | n | 保存退出 |
 | `<leader>q` / `<leader>Q` | n | 退出 / 强制退出 |
@@ -271,6 +277,17 @@ LSP server 是异步安装的，建议装完后重启 Vim 再 `:VimConfigCheck` 
 | `<Tab>` / `<CR>` | i | 补全菜单可见时确认当前项，否则普通 Tab / 回车 |
 
 > 普通 `y` / `p` 仍走 Vim 内部寄存器；只有大写 `Y` / `P` 走系统剪贴板。
+
+### 窗口 / 终端
+
+| 按键 | 模式 | 功能 |
+|---|---|---|
+| `<C-h/j/k/l>` | n | 在窗口间移动 |
+| `<C-h/j/k/l>` | t | 终端输入模式下直接切到对应窗口 |
+| `jk` / `<Esc>` | t | 退出终端输入模式（Terminal-Normal），之后可用 `:q` 关闭 |
+
+竖向窗口分隔线使用 `fillchars=vert:│` + 加粗的 lavender `VertSplit`；
+横向窗口之间的分隔就是状态栏，保留了 catppuccin 自带的底色，方便看清分屏关系。
 
 ### LSP（仅在 LSP attach 的 buffer 生效）
 
@@ -373,7 +390,11 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 
 - 使用官方 `catppuccin/vim`，配色 `catppuccin_mocha`（对应 Neovim 侧的
   NvChad catppuccin）;
-- 透明背景：`Normal`、`Pmenu`、`StatusLine`、`TabLine` 等组背景设为 `NONE`；
+- 透明背景：`Normal`、`Pmenu`、`TabLine` 等组背景设为 `NONE`；
+- 状态栏保留 catppuccin 自带底色（active `#11111b` / inactive `#181825`），
+  因为横向分屏的分隔就是状态栏，透明会让上下窗口边界消失；
+- 竖向分隔线使用 `fillchars=vert:│` + 加粗的 `VertSplit`（`#b4befe`），
+  分屏关系更清楚；
 - 行号颜色对齐 Neovim：
   - 相对行号 `LineNr`：`#6c7086`
   - 当前行绝对行号 `CursorLineNr`：`#b4befe` + bold（由 `cursorline` +
@@ -426,6 +447,10 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 已在 clipboard provider 里修复：复制命令会把 stdout/stderr 重定向到
 `/dev/null`，避免 `wl-copy`/`xclip` fork 出来的常驻进程让 Vim 的 `system()`
 一直等 pipe EOF。更新配置后即可生效。
+
+**Q：`:LspInstallServer` / `:VimConfigFix` 安装时窗口乱跳、退不出来？**
+已修复：安装终端现在开在新窗口，焦点启动后立刻回到原窗口；终端里 `jk`/`Esc`
+退出输入模式，`Ctrl+hjkl` 切窗口，Terminal-Normal 下 `:q` 关闭安装窗口。
 
 **Q：Alt+j/k 没反应？**
 部分终端把 Alt 发成 ESC 前缀，配置里已经用 `<Esc>j/k` 做了兜底，但只在补全
