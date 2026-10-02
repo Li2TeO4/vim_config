@@ -77,7 +77,7 @@ fi
 if [[ "$WITH_PLUGINS" == 1 ]]; then
   if command -v vim >/dev/null 2>&1; then
     echo "[4/4] 安装/更新 vim-plug 插件（首次会下载插件，可能较慢）..."
-    if vim -Nu "$TARGET_VIMRC" -i NONE --not-a-term -c 'PlugInstall --sync' -c 'qa!' </dev/null; then
+    if vim -Nu "$TARGET_VIMRC" -i NONE -es -c 'PlugInstall --sync' -c 'qa!' </dev/null; then
       echo "[4/4] 插件安装完成"
     else
       echo "[4/4] 插件安装未完成，可稍后启动 vim 后执行 :PlugInstall"

@@ -98,7 +98,7 @@ fi
 # 可选：补齐/更新插件
 if [[ "$WITH_PLUGINS" == 1 ]] && command -v vim >/dev/null 2>&1; then
   echo "更新/补齐 vim-plug 插件..."
-  if vim -Nu "$TARGET_VIMRC" -i NONE --not-a-term -c 'PlugInstall --sync' -c 'qa!' </dev/null; then
+  if vim -Nu "$TARGET_VIMRC" -i NONE -es -c 'PlugInstall --sync' -c 'qa!' </dev/null; then
     echo "插件已同步"
   else
     echo "插件同步未完成，可稍后启动 vim 后执行 :PlugInstall"
