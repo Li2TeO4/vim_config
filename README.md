@@ -127,8 +127,9 @@ git clone https://github.com/Li2TeO4/vim_config.git ~/code/vim_config
 2. **安装 vimrc**：`vimrc` → `~/.vimrc`。
 3. **安装 schema 缓存**：`schemas/*.json` → `$XDG_DATA_HOME/vim-schemas`
    （缺省 `~/.local/share/vim-schemas`）。
-4. **安装插件**：默认执行 `vim ... -c 'PlugInstall --sync'`；网络异常时不会
-   中断安装，只会提示稍后重试。
+4. **安装插件**：默认用 `vim -es -c 'PlugInstall --sync' -c 'qa!'`（silent Ex
+   模式，不会让 Vim 把终端留在 raw 状态）；网络异常时不会中断安装，只会提示
+   稍后重试。
 
 可选参数：
 
@@ -553,6 +554,11 @@ Arch 用 `./language-server-add.sh` 安装 `fish-lsp` / `kdl-lsp` 包，
 能自动安装的 LSP server 会调用 vim-lsp-settings 安装器；
 `lemminx`、`fish-lsp`、`kdl-lsp` 等只能系统包安装的会给出
 `./language-server-add.sh` 提示。装完按提示重启 Vim 再自检。
+
+**Q：执行 `install.sh` / `update.sh` 后 zsh 行为异常（提示符、方向键失灵）？**
+旧版本用 `--not-a-term` 调用 Vim 执行 `PlugInstall`，在这种 stdio 组合下 Vim
+退出时可能不恢复终端 termios，zsh 会拿到一个被重置的终端状态。现在改用
+`-es`（silent Ex 模式）调用，不再触碰终端状态；`./update.sh` 拉到新提交后即可。
 
 **Q：大写 Y 复制会卡住？**
 已在 clipboard provider 里修复：复制命令会把 stdout/stderr 重定向到
