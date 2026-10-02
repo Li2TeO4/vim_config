@@ -41,6 +41,8 @@
   - 其他：systemd unit、bazel/starlark。
 - **自动补全**：`asyncomplete.vim` + `asyncomplete-lsp.vim`，Alt+j/k 选择，
   Tab/回车确认。
+- **快速注释**：`<leader>/` 对齐 nvim（`vim-commentary`）：普通模式切换当前行，
+  可视模式切换选中行；注释符按 filetype 自动识别。
 - **Schema 校验**：
   - JSON / YAML 使用 `vim-lsp-settings` 自带的 SchemaStore 目录（1000+ 条），
     按文件名自动匹配，也支持文件内 `$schema`；
@@ -362,6 +364,7 @@ Arch 下各语言服务与包名：
 | `ww` | n | 保存 |
 | `<leader>wq` | n | 保存退出 |
 | `<leader>q` / `<leader>Q` | n | 退出 / 强制退出 |
+| `<leader>/` | n / v | 快速注释/取消注释：普通模式当前行，可视模式选中行（对齐 nvim） |
 | `Y` / `P` | n / v | 整行/选中内容进系统剪贴板；从系统剪贴板粘贴 |
 | `<Tab>` / `<CR>` | i | 补全菜单可见时确认当前项，否则普通 Tab / 回车 |
 
@@ -652,6 +655,7 @@ JSON/YAML 的 SchemaStore 目录按需远程拉取；TOML 和 docker-compose 优
 | [catppuccin/vim](https://github.com/catppuccin/vim) | 主题 |
 | [vim-surround](https://github.com/tpope/vim-surround) | 成对符号编辑 |
 | [vim-lastplace](https://github.com/farmergreg/vim-lastplace) | 记住上次编辑位置 |
+| [vim-commentary](https://github.com/tpope/vim-commentary) | 快速注释（`<leader>/` 底层） |
 
 `schemas/` 目录中的 JSON schema 来自
 [SchemaStore](https://www.schemastore.org/) 及其指向的上游项目，仅作为本地缓存

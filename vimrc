@@ -65,6 +65,11 @@ nnoremap <leader>Q  :q!<CR>
 nnoremap <S-H>      ^
 nnoremap <S-L>      $
 
+" 快速注释：对齐 nvim 的 <leader>/（Comment.nvim toggle.linewise）
+" 直接用 vim-commentary 的 <Plug>，避免 gcc/gc 映射在 noremap 规则下不被展开
+nnoremap <leader>/ <Plug>CommentaryLine
+xnoremap <leader>/ <Plug>Commentary
+
 " 普通模式窗口间移动（对应 nvim 的 <C-hjkl>）
 nnoremap <C-h> <C-w>h
 nnoremap <C-j> <C-w>j
@@ -527,6 +532,7 @@ if filereadable(expand('~/.vim/autoload/plug.vim'))
   call plug#begin('~/.vim/plugged')
   Plug 'tpope/vim-surround'             " 快速处理成对符号
   Plug 'farmergreg/vim-lastplace'       " 记录上次打开位置
+  Plug 'tpope/vim-commentary'           " 快速注释（gcc / gc）
   if s:has_lsp
     Plug 'prabirshrestha/vim-lsp'         " LSP 客户端
     Plug 'mattn/vim-lsp-settings'         " LSP server 自动配置（含 SchemaStore 目录）
@@ -537,7 +543,7 @@ if filereadable(expand('~/.vim/autoload/plug.vim'))
   call plug#end()
 
   " 插件目录缺失时，启动完成后自动补装并重新加载 vimrc（首次到新机器可用）
-  let s:required_plugins = ['vim-surround', 'vim-lastplace', 'catppuccin']
+  let s:required_plugins = ['vim-surround', 'vim-lastplace', 'vim-commentary', 'catppuccin']
   if s:has_lsp
     let s:required_plugins += ['vim-lsp', 'vim-lsp-settings', 'asyncomplete.vim', 'asyncomplete-lsp.vim']
   endif
@@ -640,6 +646,7 @@ function! s:ConfigCheckLines() abort
   \ ['vim-plug', expand('~/.vim/autoload/plug.vim'), 'file'],
   \ ['vim-surround', expand('~/.vim/plugged/vim-surround'), 'dir'],
   \ ['vim-lastplace', expand('~/.vim/plugged/vim-lastplace'), 'dir'],
+  \ ['vim-commentary', expand('~/.vim/plugged/vim-commentary'), 'dir'],
   \ ['catppuccin', expand('~/.vim/plugged/catppuccin'), 'dir'],
   \ ]
   if s:has_lsp
@@ -861,6 +868,7 @@ function! s:ConfigFix() abort
   \ ['vim-plug', expand('~/.vim/autoload/plug.vim'), 'file'],
   \ ['vim-surround', expand('~/.vim/plugged/vim-surround'), 'dir'],
   \ ['vim-lastplace', expand('~/.vim/plugged/vim-lastplace'), 'dir'],
+  \ ['vim-commentary', expand('~/.vim/plugged/vim-commentary'), 'dir'],
   \ ['catppuccin', expand('~/.vim/plugged/catppuccin'), 'dir'],
   \ ]
   if s:has_lsp
