@@ -23,6 +23,7 @@
 - [键位速查](#键位速查)
 - [LSP 与 Schema 校验](#lsp-与-schema-校验)
 - [主题](#主题)
+- [非对称滚动](#非对称滚动)
 - [可移植性设计](#可移植性设计)
 - [常见问题](#常见问题)
 - [卸载与恢复](#卸载与恢复)
@@ -43,6 +44,8 @@
   Tab/回车确认。
 - **快速注释**：`<leader>/` 对齐 nvim（`vim-commentary`）：普通模式切换当前行，
   可视模式切换选中行；注释符按 filetype 自动识别。
+- **非对称 scrolloff**：对齐 nvim `scrollpad.lua`：光标下方始终保留 4 个视觉行，
+  上方尽量保留 4 行（文件顶部允许不足）；窗口过小时自动停用，纯 Vimscript 实现。
 - **Schema 校验**：
   - JSON / YAML 使用 `vim-lsp-settings` 自带的 SchemaStore 目录（1000+ 条），
     按文件名自动匹配，也支持文件内 `$schema`；
@@ -496,6 +499,22 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 
 想换回实心 Mocha 背景，把主题段里 `hi Normal guibg=NONE` 改成
 `guibg=#1e1e2e` 即可。
+
+---
+
+## 非对称滚动
+
+移植自 nvim 的 `lua/configs/scrollpad.lua`：
+
+- **下方硬保留 4 个视觉行**：光标继续下移时视口会跟着滚，文件末尾也会尽量保留；
+- **上方软保留 4 个视觉行**：光标靠近文件顶部时允许不足 4 行；
+- 行数按终端可见行计算，会考虑 `wrap` 折行，以及行号 / sign 列占用的宽度；
+- 窗口可用高度 ≤ 10 行时自动停用，交回 Vim 原生滚动，避免 4+4 行保护占满窗口；
+- 原生 `'scrolloff'` 被设为 0，避免两套逻辑叠加。
+
+实现上没有引入额外插件：在 `CursorMoved` / `CursorMovedI` 时根据顶行、光标行和
+窗口高度调整 `topline`。nvim 原版需要配合 `snacks.scroll` 平滑动画补帧；本配置
+没有平滑滚动动画，因此不需要那套 recheck 逻辑。
 
 ---
 
