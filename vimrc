@@ -2,7 +2,7 @@
 " vim_config-managed: https://github.com/Li2TeO4/vim_config
 let g:vim_config_managed = 'Li2TeO4/vim_config'
 
-" 配置目录（默认 ~/.config/vim），fragments/ 里是拆分后的各段配置
+" 配置目录（默认 ~/.config/vim），configs/ 里是拆分后的各段配置
 let g:vim_config_dir = expand('<sfile>:p:h')
 let g:vim_config_vimrc = expand('<sfile>:p')
 let g:vim_config_readme = g:vim_config_dir . '/README.md'
@@ -17,24 +17,24 @@ for s:dir in [g:vim_config_dir, expand('~/.vim')]
 endfor
 
 " 顺序固定：先基础/路径/schema，再键位/UI，然后 LSP、插件、主题、自检/修复
-if isdirectory(g:vim_config_dir . '/fragments')
+if isdirectory(g:vim_config_dir . '/configs')
   for s:file in [
-  \ 'fragments/00-options.vim',
-  \ 'fragments/10-paths.vim',
-  \ 'fragments/15-schema.vim',
-  \ 'fragments/20-keymaps.vim',
-  \ 'fragments/30-clipboard.vim',
-  \ 'fragments/40-scrollpad.vim',
-  \ 'fragments/50-lsp.vim',
-  \ 'fragments/60-plugins.vim',
-  \ 'fragments/70-theme.vim',
-  \ 'fragments/80-check.vim',
-  \ 'fragments/90-fix.vim',
+  \ 'configs/00-options.vim',
+  \ 'configs/10-paths.vim',
+  \ 'configs/15-schema.vim',
+  \ 'configs/20-keymaps.vim',
+  \ 'configs/30-clipboard.vim',
+  \ 'configs/40-scrollpad.vim',
+  \ 'configs/50-lsp.vim',
+  \ 'configs/60-plugins.vim',
+  \ 'configs/70-theme.vim',
+  \ 'configs/80-check.vim',
+  \ 'configs/90-fix.vim',
   \ ]
     execute 'source' fnameescape(g:vim_config_dir . '/' . s:file)
   endfor
 else
   echohl WarningMsg
-  echomsg 'vim_config: 找不到 ' . g:vim_config_dir . '/fragments，请重新运行 install.sh'
+  echomsg 'vim_config: 找不到 ' . g:vim_config_dir . '/configs，请重新运行 install.sh'
   echohl None
 endif

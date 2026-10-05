@@ -5,7 +5,7 @@
 #
 # 安装布局（XDG）：
 #   $XDG_CONFIG_HOME/vim/vimrc        入口文件
-#   $XDG_CONFIG_HOME/vim/fragments/   拆分后的配置片段
+#   $XDG_CONFIG_HOME/vim/configs/   拆分后的配置片段
 #   $XDG_CONFIG_HOME/vim/README.md    <leader>? 查看的说明文档
 #   $XDG_DATA_HOME/vim-schemas/       schema 缓存
 #
@@ -16,12 +16,12 @@ set -euo pipefail
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_VIMRC="$REPO_DIR/vimrc"
-SOURCE_FRAGMENTS="$REPO_DIR/fragments"
+SOURCE_CONFIGS="$REPO_DIR/configs"
 SOURCE_README="$REPO_DIR/README.md"
 
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/vim"
 TARGET_VIMRC="$CONFIG_HOME/vimrc"
-TARGET_FRAGMENTS="$CONFIG_HOME/fragments"
+TARGET_CONFIGS="$CONFIG_HOME/configs"
 TARGET_README="$CONFIG_HOME/README.md"
 
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -46,8 +46,8 @@ if [[ ! -f "$SOURCE_VIMRC" ]]; then
   echo "错误: 找不到 $SOURCE_VIMRC" >&2
   exit 1
 fi
-if [[ ! -d "$SOURCE_FRAGMENTS" ]]; then
-  echo "错误: 找不到配置片段目录 $SOURCE_FRAGMENTS" >&2
+if [[ ! -d "$SOURCE_CONFIGS" ]]; then
+  echo "错误: 找不到配置片段目录 $SOURCE_CONFIGS" >&2
   exit 1
 fi
 
@@ -85,17 +85,22 @@ else
   echo "[1/4] 未发现现有 XDG 配置，无需备份"
 fi
 
-# 2) 安装入口 vimrc + fragments + README
+# 2) 安装入口 vimrc + configs + README
 mkdir -p "$CONFIG_HOME"
 rm -f "$TARGET_VIMRC"
 cp "$SOURCE_VIMRC" "$TARGET_VIMRC"
-rm -rf "$TARGET_FRAGMENTS"
-cp -a "$SOURCE_FRAGMENTS" "$TARGET_FRAGMENTS"
+rm -rf "$TARGET_CONFIGS"
+cp -a "$SOURCE_CONFIGS" "$TARGET_CONFIGS"
+# 兼容更早版本的 XDG 拆分布局：旧目录名是 fragments/
+if [[ -d "$CONFIG_HOME/fragments" ]]; then
+  rm -rf "$CONFIG_HOME/fragments"
+  echo "[2/4] 已清理旧 fragments 目录 -> $CONFIG_HOME/fragments"
+fi
 if [[ -f "$SOURCE_README" ]]; then
   cp "$SOURCE_README" "$TARGET_README"
 fi
 echo "[2/4] 已安装入口 -> $TARGET_VIMRC"
-echo "[2/4] 已安装片段 -> $TARGET_FRAGMENTS"
+echo "[2/4] 已安装片段 -> $TARGET_CONFIGS"
 if [[ -f "$SOURCE_README" ]]; then
   echo "[2/4] 已安装说明 -> $TARGET_README"
 fi
@@ -128,7 +133,7 @@ fi
 echo
 echo "安装完成："
 echo "  配置入口: $TARGET_VIMRC"
-echo "  配置片段: $TARGET_FRAGMENTS"
+echo "  配置片段: $TARGET_CONFIGS"
 if [[ -f "$TARGET_README" ]]; then
   echo "  使用说明: $TARGET_README（Vim 里按 <leader>?）"
 fi
