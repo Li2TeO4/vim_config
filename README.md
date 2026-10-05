@@ -44,6 +44,10 @@
   Tab/回车确认。
 - **快速注释**：`<leader>/` 对齐 nvim（`vim-commentary`）：普通模式切换当前行，
   可视模式切换选中行；注释符按 filetype 自动识别。
+- **快速查看 README**：`<leader>?` 对齐 nvim：新标签页只读打开本说明，已打开则
+  直接聚焦原窗口；纯 Vimscript 实现。
+- **XDG 拆分布局**：入口 `$XDG_CONFIG_HOME/vim/vimrc` + `fragments/` 分片，
+  插件仍复用 `~/.vim/plugged`，所有片段不跨脚本共享 `s:`，可单独阅读修改。
 - **非对称 scrolloff**：对齐 nvim `scrollpad.lua`：光标下方始终保留 4 个视觉行，
   上方尽量保留 4 行（文件顶部允许不足）；窗口过小时自动停用，纯 Vimscript 实现。
 - **Schema 校验**：
@@ -71,10 +75,22 @@
 
 ```
 vim_config/
-├── install.sh        # 一键安装：备份原配置 + 部署 vimrc/schema + 装插件
-├── update.sh         # 更新：校验归属后 git pull，再同步 vimrc/schema
+├── install.sh        # 一键安装：备份旧配置 + 部署 XDG 配置/schema + 装插件
+├── update.sh         # 更新：校验归属后 git pull，再同步配置/schema
 ├── language-server-add.sh  # 用系统包管理器补充缺失的 LSP server
-├── vimrc             # 主配置，安装后放到 ~/.vimrc
+├── vimrc             # 入口，安装为 $XDG_CONFIG_HOME/vim/vimrc
+├── fragments/        # 拆分后的配置片段（入口按固定顺序 source）
+│   ├── 00-options.vim
+│   ├── 10-paths.vim
+│   ├── 15-schema.vim
+│   ├── 20-keymaps.vim
+│   ├── 30-clipboard.vim
+│   ├── 40-scrollpad.vim
+│   ├── 50-lsp.vim
+│   ├── 60-plugins.vim
+│   ├── 70-theme.vim
+│   ├── 80-check.vim
+│   └── 90-fix.vim
 ├── schemas/          # 本地 schema 缓存（TOML 常用文件 + docker-compose）
 │   ├── cargo.json
 │   ├── pyproject.json
@@ -83,6 +99,10 @@ vim_config/
 │   └── compose-spec.json
 └── README.md
 ```
+
+入口 `vimrc` 只做三件事：声明来源标记、把配置目录/`~/.vim` 加进 `runtimepath`、
+按编号顺序 `source` 所有 fragments。片段之间 **不共享 `s:` 脚本局部作用域**；
+跨片段的公共状态用 `g:vim_config_*` 变量和 `VimConfig*` 全局函数。
 
 配置里带有来源标记（**不要删除**，安装/更新脚本靠它识别归属）：
 
@@ -97,7 +117,7 @@ let g:vim_config_managed = 'Li2TeO4/vim_config'
 
 | 项 | 说明 |
 |---|---|
-| Vim | 推荐 9.x（本配置在 Vim 9.2 上开发验证）；Vim 8 若带 `+timers +lambda +job` 等也可用 |
+| Vim | 推荐 9.2；XDG vimrc 需要 Vim ≥ 9.1.0327（旧版本可手动 `vim -u ~/.config/vim/vimrc`，但不再默认接管） |
 | git | 安装/更新、插件管理 |
 | curl / wget | `vim-plug` 自举、`:LspFetchSchemas` 下载 schema |
 | node / npm | 部分 LSP server 的安装方式（`vscode-json-language-server`、`yaml-language-server`、`vim-language-server` 等），也可用系统包管理器 |
@@ -127,9 +147,13 @@ git clone https://github.com/Li2TeO4/vim_config.git ~/code/vim_config
 
 ### install.sh 行为
 
-1. **检测原配置**：如果 `~/.vimrc` 已存在且不是本仓库管理的配置，先备份为
-   `~/.vimrc.bak.<时间戳>-<PID>`；如果已经是本仓库的配置，则不重复备份。
-2. **安装 vimrc**：`vimrc` → `~/.vimrc`。
+1. **处理旧位置**：备份并移除 `~/.vimrc`、`~/.vim/vimrc`（Vim 会优先读它们，
+   不移走就不会启用 `$XDG_CONFIG_HOME/vim/vimrc`）；备份为
+   `<原路径>.bak.<时间戳>-<PID>`。
+2. **安装 XDG 配置**：
+   - `vimrc` → `$XDG_CONFIG_HOME/vim/vimrc`（缺省 `~/.config/vim/vimrc`）；
+   - `fragments/*.vim` → `$XDG_CONFIG_HOME/vim/fragments/`；
+   - `README.md` → `$XDG_CONFIG_HOME/vim/README.md`（供 `<leader>?` 使用）。
 3. **安装 schema 缓存**：`schemas/*.json` → `$XDG_DATA_HOME/vim-schemas`
    （缺省 `~/.local/share/vim-schemas`）。
 4. **安装插件**：默认用 `vim -es -c 'PlugInstall --sync' -c 'qa!'`（silent Ex
@@ -226,7 +250,8 @@ vim foo.json          # 先打开一个该类型的文件
 
 ## 更新配置
 
-更新脚本会先确认当前 `~/.vimrc` 就是本仓库安装的配置，再拉取 GitHub 最新提交：
+更新脚本会先确认 `$XDG_CONFIG_HOME/vim/vimrc` 是本仓库安装的配置，且
+`~/.vimrc` / `~/.vim/vimrc` 没有抢占它，再拉取 GitHub 最新提交：
 
 ```bash
 cd ~/code/vim_config
@@ -235,17 +260,18 @@ cd ~/code/vim_config
 
 ### update.sh 行为
 
-1. **归属检查**：`~/.vimrc` 必须同时包含 `vim_config-managed:` 标记和
-   `g:vim_config_managed` 变量；否则直接退出，不做任何修改。
+1. **归属 / 冲突检查**：`$XDG_CONFIG_HOME/vim/vimrc` 必须包含
+   `vim_config-managed:` 标记和 `g:vim_config_managed` 变量，同时
+   `fragments/` 目录必须存在；`~/.vimrc` / `~/.vim/vimrc` 必须已不存在。
 2. **仓库干净检查**：仓库有未提交改动时退出，避免覆盖本地修改。
 3. `git pull --ff-only` 拉取最新提交。
-4. 同步 `vimrc`：如果当前文件和仓库不一致，先备份
-   `~/.vimrc.bak.<时间戳>-<PID>` 再覆盖；如果一致则跳过。
+4. 同步 `vimrc`、`fragments/`、`README.md`：只要有一项不同，先把当前
+   `$XDG_CONFIG_HOME/vim` 整体备份到 `<配置目录>.bak.<时间戳>-<PID>`，再替换。
 5. 同步 `schemas/` 到 XDG 数据目录。
 6. 默认执行 `:PlugInstall --sync` 补齐/更新插件，`--no-plugins` 可跳过。
 
-如果输出“当前 ~/.vimrc 不是本仓库管理的配置”，说明当前文件没有来源标记：
-不要用 `update.sh` 覆盖它；先备份/恢复，或重新运行 `install.sh`。
+如果提示“当前配置不是本仓库管理”或“检测到旧位置配置”，说明还没完成迁移：
+先备份/移走旧 `~/.vimrc`，再重新运行 `install.sh`。
 
 ---
 
@@ -368,6 +394,7 @@ Arch 下各语言服务与包名：
 | `<leader>wq` | n | 保存退出 |
 | `<leader>q` / `<leader>Q` | n | 退出 / 强制退出 |
 | `<leader>/` | n / v | 快速注释/取消注释：普通模式当前行，可视模式选中行（对齐 nvim） |
+| `<leader>?` | n | 只读打开本配置 README（对齐 nvim；已打开则聚焦原窗口） |
 | `Y` / `P` | n / v | 整行/选中内容进系统剪贴板；从系统剪贴板粘贴 |
 | `<Tab>` / `<CR>` | i | 补全菜单可见时确认当前项，否则普通 Tab / 回车 |
 
@@ -470,7 +497,8 @@ Arch 下各语言服务与包名：
 ### 追加自定义 schema
 
 ```vim
-" 在 ~/.vimrc 里追加（YAML 示例，会与自带目录合并）
+" 在 fragments/50-lsp.vim（或本机 $XDG_CONFIG_HOME/vim/fragments/50-lsp.vim）里追加
+" YAML 示例，会与自带目录合并
 let g:lsp_settings['yaml-language-server'].schemas = [
 \ {'fileMatch': ['myconf.yml', '**/myconf/*.yml'],
 \  'url': 'https://example.com/myconf.schema.json'},
@@ -520,6 +548,9 @@ JSON 对应 `g:lsp_settings['vscode-json-language-server'].schemas`。
 
 ## 可移植性设计
 
+- **XDG 配置布局**：入口和 fragments 放在 `$XDG_CONFIG_HOME/vim`；插件仍沿用
+  `~/.vim/plugged`，避免迁移插件目录的成本；`install.sh` 会自动处理旧
+  `~/.vimrc` / `~/.vim/vimrc` 抢占问题。
 - **路径**：schema 用 XDG 数据目录，可执行目录自动补 `~/.local/bin`、`~/bin`、
   `$XDG_BIN_HOME`，不写死用户名或绝对路径。
 - **vim-plug 自举**：`~/.vim/autoload/plug.vim` 不存在时自动下载：
@@ -605,9 +636,21 @@ Arch 用 `./language-server-add.sh` 安装 `fish-lsp` / `kdl-lsp` 包，
 确认终端支持真彩色（`$COLORTERM` 包含 `truecolor`/`24bit`，或 256 色以上）。
 不支持时 Vim 会走 256 色回退，透明效果取决于终端背景。
 
-**Q：`update.sh` 说当前不是本仓库配置？**
-说明 `~/.vimrc` 里没有 `vim_config-managed:` 标记。如果是你手动换掉的配置，
-不要用 update 覆盖；需要的话恢复备份或重新 `./install.sh`。
+**Q：`update.sh` 说当前不是本仓库配置，或说旧位置有配置？**
+说明 XDG 入口 `$XDG_CONFIG_HOME/vim/vimrc` 还没有本仓库标记，或者
+`~/.vimrc` / `~/.vim/vimrc` 仍然存在（Vim 会优先读旧位置）。
+不要用 update 覆盖未知配置；先备份/移走旧文件，再运行 `./install.sh`。
+
+**Q：配置文件拆到哪去了？想临时改一下？**
+入口在 `$XDG_CONFIG_HOME/vim/vimrc`，实际配置按顺序 source
+`$XDG_CONFIG_HOME/vim/fragments/*.vim`；开源仓库里对应 `vimrc` + `fragments/`。
+临时改动当前机器可直接改 fragments，但建议改仓库后再跑 `install.sh` / `update.sh`
+同步，避免下次更新被覆盖。
+
+**Q：`<leader>?` 提示找不到 README？**
+README 应该由 `install.sh` / `update.sh` 复制到
+`$XDG_CONFIG_HOME/vim/README.md`。如果是从旧版本直接 `git pull`，跑一次
+`./update.sh` 或 `./install.sh` 补上即可；也可以手动把仓库 README.md 复制过去。
 
 **Q：schema 校验要联网吗？**
 JSON/YAML 的 SchemaStore 目录按需远程拉取；TOML 和 docker-compose 优先用本地
@@ -617,19 +660,21 @@ JSON/YAML 的 SchemaStore 目录按需远程拉取；TOML 和 docker-compose 优
 
 ## 卸载与恢复
 
-1. 恢复原配置（如果有备份）：
+1. 恢复旧配置（如果安装时备份过）：
 
    ```bash
-   ls ~/.vimrc.bak.*
-   cp ~/.vimrc.bak.<时间戳> ~/.vimrc
+   ls ~/.vimrc.bak.* ~/.vim/vimrc.bak.* 2>/dev/null
+   cp ~/.vimrc.bak.<时间戳> ~/.vimrc     # 或把 ~/.vim/vimrc.bak.* 恢复到 ~/.vim/vimrc
    ```
 
 2. 删除本配置生成的文件：
 
    ```bash
-   rm -f ~/.vimrc
-   rm -rf ~/.local/share/vim-schemas          # 或 $XDG_DATA_HOME/vim-schemas
+   rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/vim"
+   rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/vim-schemas"
    rm -rf ~/.vim/plugged ~/.vim/autoload/plug.vim
+   # 更新时产生的备份目录，确认不需要后自行删除：
+   #   ~/.config/vim.bak.*
    ```
 
 3. LSP server 是独立安装的，用 `:LspUninstallServer <name>` 或系统包管理器卸载。
@@ -640,20 +685,25 @@ JSON/YAML 的 SchemaStore 目录按需远程拉取；TOML 和 docker-compose 优
 
 ## 维护本仓库
 
-配置的“源文件”是仓库里的 `vimrc`；本机安装后实际生效的是 `~/.vimrc`。
+配置的“源文件”是仓库里的入口 `vimrc` 和 `fragments/*.vim`；本机实际生效的是
+`${XDG_CONFIG_HOME:-~/.config}/vim/vimrc` 与同目录下的 `fragments/`。
 
-- 如果直接在 `~/.vimrc` 里改了配置，同步回仓库：
+- 直接在**本机安装的 fragments** 里改了配置，想同步回仓库：
 
   ```bash
-  cp ~/.vimrc ~/code/vim_config/vimrc
+  cp ~/.config/vim/vimrc                ~/code/vim_config/vimrc
+  cp ~/.config/vim/fragments/*.vim      ~/code/vim_config/fragments/
   cd ~/code/vim_config
-  git add vimrc && git commit -m "update vimrc" && git push
+  git add vimrc fragments && git commit -m "update vim config" && git push
   ```
 
-- 如果在仓库里改了 `vimrc` 并已提交/推送：
+- 如果在仓库里改了 `vimrc` / `fragments/` 并已提交/推送：
   - 其他机器：运行 `./update.sh` 拉取并同步；
-  - 当前机器立即生效：`cp ~/code/vim_config/vimrc ~/.vimrc`
-    （`update.sh` 要求仓库无未提交改动，未提交时不会执行）。
+  - 当前机器立即生效：重新运行 `./install.sh`，或手动把 `vimrc` + `fragments/`
+    复制到 `${XDG_CONFIG_HOME:-~/.config}/vim/`。
+
+- 新增片段时，记得同时在入口 `vimrc` 的 source 列表里按顺序登记；
+  `update.sh` 会整体同步 `fragments/`。
 
 - 更新本地 schema 缓存后，如需随仓库分发，把 `~/.local/share/vim-schemas/*.json`
   复制回 `schemas/` 再提交。
@@ -662,11 +712,11 @@ JSON/YAML 的 SchemaStore 目录按需远程拉取；TOML 和 docker-compose 优
 
 ## 第三方组件
 
-本仓库的 `vimrc` 会按需安装/使用以下开源项目：
+本仓库的入口 `vimrc` + `fragments/` 会按需安装/使用以下开源项目：
 
 | 组件 | 用途 |
 |---|---|
-| [vim-plug](https://github.com/junegunn/vim-plug) | 插件管理（在 `.vimrc` 中自举） |
+| [vim-plug](https://github.com/junegunn/vim-plug) | 插件管理（在 `fragments/60-plugins.vim` 中自举） |
 | [vim-lsp](https://github.com/prabirshrestha/vim-lsp) | LSP 客户端 |
 | [vim-lsp-settings](https://github.com/mattn/vim-lsp-settings) | LSP server 自动配置与安装 |
 | [asyncomplete.vim](https://github.com/prabirshrestha/asyncomplete.vim) | 自动补全框架 |

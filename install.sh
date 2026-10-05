@@ -3,19 +3,31 @@
 # vim_config 一键安装脚本
 #   ./install.sh [--no-plugins]
 #
-# 行为：
-#   1. 检测 $HOME/.vimrc：如果不是本仓库管理的配置，先备份为 .vimrc.bak.<时间戳>
-#   2. 安装仓库里的 vimrc -> $HOME/.vimrc
-#   3. 安装本地 schema 缓存 -> $XDG_DATA_HOME/vim-schemas（缺省 ~/.local/share/vim-schemas）
-#   4. 默认执行 :PlugInstall 安装/更新 vim-plug 插件（--no-plugins 可跳过）
+# 安装布局（XDG）：
+#   $XDG_CONFIG_HOME/vim/vimrc        入口文件
+#   $XDG_CONFIG_HOME/vim/fragments/   拆分后的配置片段
+#   $XDG_CONFIG_HOME/vim/README.md    <leader>? 查看的说明文档
+#   $XDG_DATA_HOME/vim-schemas/       schema 缓存
+#
+# 注意：Unix 下 Vim 只有在 ~/.vimrc 和 ~/.vim/vimrc 都不存在时才会读取
+#       $XDG_CONFIG_HOME/vim/vimrc，所以脚本会先备份并移除这两个旧位置的文件。
 #
 set -euo pipefail
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_VIMRC="$REPO_DIR/vimrc"
-TARGET_VIMRC="$HOME/.vimrc"
+SOURCE_FRAGMENTS="$REPO_DIR/fragments"
+SOURCE_README="$REPO_DIR/README.md"
+
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/vim"
+TARGET_VIMRC="$CONFIG_HOME/vimrc"
+TARGET_FRAGMENTS="$CONFIG_HOME/fragments"
+TARGET_README="$CONFIG_HOME/README.md"
+
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 SCHEMA_DIR="$DATA_HOME/vim-schemas"
+
+LEGACY_VIMRCS=("$HOME/.vimrc" "$HOME/.vim/vimrc")
 
 WITH_PLUGINS=1
 for arg in "$@"; do
@@ -34,6 +46,10 @@ if [[ ! -f "$SOURCE_VIMRC" ]]; then
   echo "错误: 找不到 $SOURCE_VIMRC" >&2
   exit 1
 fi
+if [[ ! -d "$SOURCE_FRAGMENTS" ]]; then
+  echo "错误: 找不到配置片段目录 $SOURCE_FRAGMENTS" >&2
+  exit 1
+fi
 
 # 配置来源钩子：update.sh 和 :VimConfigCheck 也依赖这一行
 MARKER_LINE="$(grep -m1 '^" vim_config-managed:' "$SOURCE_VIMRC" || true)"
@@ -44,25 +60,45 @@ fi
 
 echo "== vim_config 安装 =="
 echo "仓库: $REPO_DIR"
-echo "目标: $TARGET_VIMRC"
+echo "配置目录: $CONFIG_HOME"
 
-# 1) 检测原配置并备份（已经由本仓库管理的不重复备份）
+# 1) 处理旧位置：~/.vimrc 和 ~/.vim/vimrc 会优先于 XDG 配置，必须让位
+for f in "${LEGACY_VIMRCS[@]}"; do
+  if [[ -e "$f" || -L "$f" ]]; then
+    BACKUP="${f}.bak.$(date +%Y%m%d-%H%M%S)-$$"
+    cp -a "$f" "$BACKUP"
+    rm -rf "$f"
+    echo "[1/4] 旧配置已备份并移除: $f -> $BACKUP"
+  fi
+done
+
+# 当前 XDG 配置不是本仓库管理时，先备份
 if [[ -e "$TARGET_VIMRC" || -L "$TARGET_VIMRC" ]]; then
   if grep -qF "$MARKER_LINE" "$TARGET_VIMRC" 2>/dev/null; then
-    echo "[1/4] 现有配置已由本仓库管理，跳过备份"
+    echo "[1/4] 现有 XDG 配置已由本仓库管理，跳过备份"
   else
     BACKUP="${TARGET_VIMRC}.bak.$(date +%Y%m%d-%H%M%S)-$$"
     cp -a "$TARGET_VIMRC" "$BACKUP"
-    echo "[1/4] 检测到原配置，已备份 -> $BACKUP"
+    echo "[1/4] 检测到原 XDG 配置，已备份 -> $BACKUP"
   fi
 else
-  echo "[1/4] 未发现现有 $TARGET_VIMRC，无需备份"
+  echo "[1/4] 未发现现有 XDG 配置，无需备份"
 fi
 
-# 2) 安装 vimrc（先删后拷，兼容目标原本是软链接的情况）
+# 2) 安装入口 vimrc + fragments + README
+mkdir -p "$CONFIG_HOME"
 rm -f "$TARGET_VIMRC"
 cp "$SOURCE_VIMRC" "$TARGET_VIMRC"
-echo "[2/4] 已安装 vimrc -> $TARGET_VIMRC"
+rm -rf "$TARGET_FRAGMENTS"
+cp -a "$SOURCE_FRAGMENTS" "$TARGET_FRAGMENTS"
+if [[ -f "$SOURCE_README" ]]; then
+  cp "$SOURCE_README" "$TARGET_README"
+fi
+echo "[2/4] 已安装入口 -> $TARGET_VIMRC"
+echo "[2/4] 已安装片段 -> $TARGET_FRAGMENTS"
+if [[ -f "$SOURCE_README" ]]; then
+  echo "[2/4] 已安装说明 -> $TARGET_README"
+fi
 
 # 3) 安装本地 schema 缓存
 if compgen -G "$REPO_DIR/schemas/*.json" >/dev/null; then
@@ -90,4 +126,10 @@ else
 fi
 
 echo
-echo "安装完成。启动 vim 后可执行 :VimConfigCheck 自检。"
+echo "安装完成："
+echo "  配置入口: $TARGET_VIMRC"
+echo "  配置片段: $TARGET_FRAGMENTS"
+if [[ -f "$TARGET_README" ]]; then
+  echo "  使用说明: $TARGET_README（Vim 里按 <leader>?）"
+fi
+echo "启动 vim 后可执行 :VimConfigCheck 自检。"

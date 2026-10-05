@@ -13,7 +13,7 @@
 #
 set -euo pipefail
 
-# 与 .vimrc 的探测保持一致：用户级安装目录也在 PATH 里
+# 与 vim 配置（~/.config/vim）的 PATH 探测保持一致：用户级安装目录也在 PATH 里
 export PATH="$HOME/.local/bin:$HOME/bin:${PATH:-/usr/bin:/bin}"
 
 ASSUME_YES=0
