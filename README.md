@@ -42,6 +42,8 @@
   - 其他：systemd unit、bazel/starlark。
 - **自动补全**：`asyncomplete.vim` + `asyncomplete-lsp.vim`，Alt+j/k 选择，
   Tab/回车确认。
+- **Schema 校验开关**：`<leader>ls` / `:LspSchemaToggle` 只切换 JSON/YAML/TOML
+  的 schema 关联，不停止 LSP server、不影响补全和语法诊断。
 - **快速注释**：`<leader>/` 对齐 nvim（`vim-commentary`）：普通模式切换当前行，
   可视模式切换选中行；注释符按 filetype 自动识别。
 - **快速查看 README**：`<leader>?` 对齐 nvim：新标签页只读打开本说明，已打开则
@@ -292,6 +294,7 @@ cd ~/code/vim_config
 - **插件**：vim-plug、主题、surround、lastplace、vim-lsp、vim-lsp-settings、
   asyncomplete 等是否齐全；
 - **LSP server**：每种 filetype 的 server 能否解析到路径；
+- **schema 校验状态**：当前开启 / 关闭（`<leader>ls` / `:LspSchemaToggle`）；
 - **schema 缓存**：5 个本地 schema 的完整度；
 - **剪贴板**：当前用哪个后端（wl-clipboard / xclip / xsel / pbcopy / 内建 / 不可用）；
 - **外部命令**：curl、wget、git、node、npm；
@@ -442,6 +445,7 @@ Arch 下各语言服务与包名：
 | 按键 | 功能 |
 |---|---|
 | `<leader>lc` | 开关自动补全（关闭后不再自动弹出，手动 `<C-x><C-o>` 不受影响） |
+| `<leader>ls` | 只开关 schema 校验（JSON/YAML/TOML 的 schema 关联）；server 和补全保持运行 |
 | `<leader>lx` | 开关整个 LSP 服务：停掉所有 server，清空诊断 / schema 校验；再按恢复 |
 
 对应命令：`:LspCompletionToggle`、`:LspServiceToggle`。
@@ -453,6 +457,7 @@ Arch 下各语言服务与包名：
 | `:VimConfigCheck` | 换机自检 |
 | `:VimConfigFix` | 一键修复（插件/schema 自动补，缺失 server 调安装器） |
 | `:LspFetchSchemas` | 下载/补齐 5 个本地 schema 缓存 |
+| `:LspSchemaToggle` | 只开关 JSON/YAML/TOML schema 校验（等同 `<leader>ls`） |
 | `:LspInstallServer` | 为当前文件类型安装 LSP server |
 | `:LspUninstallServer <name>` | 卸载指定 server |
 | `:PlugInstall` / `:PlugUpdate` / `:PlugClean` | vim-plug 安装 / 更新 / 清理插件 |
@@ -461,6 +466,18 @@ Arch 下各语言服务与包名：
 ---
 
 ## LSP 与 Schema 校验
+
+### schema 校验开关
+
+`<leader>ls` 或 `:LspSchemaToggle`：只开关 JSON/YAML/TOML 的 schema 关联，
+不停止 LSP server，不影响补全、hover、语法诊断。关闭时：
+
+- JSON：`json.schemas` 置空，`json.validate.enable` 仍为 true，所以语法错误照常提示；
+- YAML：`yaml.schemas` 置空并关闭 `schemaStore.enable`，`yaml.validate` 保持 true；
+- TOML：`evenBetterToml.schema.enabled=false`。
+
+再按一次恢复。YAML 的 schema 提示通常会立即刷新；JSON 使用 pull 诊断，重新开启后
+在下次编辑/保存时会重新拉取并显示 schema 警告。
 
 ### JSON / YAML
 
@@ -597,6 +614,11 @@ Arch 用 `./language-server-add.sh` 安装 `fish-lsp` / `kdl-lsp` 包，
 
 **Q：不想用补全了？**
 `<leader>lc` 关闭自动弹出；再按恢复。补全关掉不影响诊断。
+
+**Q：只想临时关掉 schema 校验，但保留 LSP / 补全？**
+`<leader>ls` 或 `:LspSchemaToggle`：只移除 JSON/YAML/TOML 的 schema 关联
+（YAML 同时关 schemaStore），LSP server、补全、hover 和语法诊断继续工作；
+再按一次恢复。
 
 **Q：想彻底停掉 LSP / schema 校验？**
 `<leader>lx`：停掉所有 server、清空诊断和 schema 校验；再按恢复。

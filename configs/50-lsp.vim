@@ -5,6 +5,12 @@ if g:vim_config_has_lsp
 " 导致 vim 启动时直接打开的第一个文件错过 server 注册；实测开关对启动耗时无影响，这里关掉。
 let g:lsp_settings_lazyload = 0
 
+" schema 校验开关（只影响 JSON/YAML/TOML 的 schema，不影响补全和 LSP 服务）
+let g:vim_config_schema_validation = 1
+function! s:SchemaEnabled() abort
+  return get(g:, 'vim_config_schema_validation', 1)
+endfunction
+
 " 新版 vscode-json-language-server 只走 pull 诊断，必须声明该 capability
 let g:lsp_diagnostics_pull_enabled = 1
 
@@ -46,30 +52,40 @@ augroup END
 " JSON LS 必须显式下发 validate.enable，否则不会产生诊断；
 " 这里同时复用 vim-lsp-settings 自带的 SchemaStore 目录，不丢校验能力。
 function! s:JsonWorkspaceConfig(name, key) abort
-  let l:schemas = exists('*lsp_settings#utils#load_schemas') ? lsp_settings#utils#load_schemas(a:name) : []
-  let l:schemas += [{'fileMatch': ['/vim-lsp-settings/settings.json', '/.vim-lsp-settings/settings.json'], 'url': 'https://mattn.github.io/vim-lsp-settings/local-schema.json'}]
+  let l:schemas = []
+  if s:SchemaEnabled()
+    let l:schemas = exists('*lsp_settings#utils#load_schemas') ? lsp_settings#utils#load_schemas(a:name) : []
+    let l:schemas += [{'fileMatch': ['/vim-lsp-settings/settings.json', '/.vim-lsp-settings/settings.json'], 'url': 'https://mattn.github.io/vim-lsp-settings/local-schema.json'}]
+  endif
+  " 只关 schema 关联，不关 validate.enable；这样 JSON 语法诊断仍然保留
   return {'json': {'format': {'enable': v:true}, 'validate': {'enable': v:true}, 'schemas': l:schemas}}
 endfunction
 
 " taplo 0.10 的默认 catalog 会抓远程 SchemaStore（慢且与下面重复），
 " 这里置空 catalogs，改用本地缓存的 SchemaStore schema。
 function! s:TaploInitOptions(name, key) abort
+  let l:enabled = s:SchemaEnabled()
   " catalogs 置空：taplo 0.10 默认会抓 SchemaStore catalog，既慢又和下面重复；
   " associations 优先用本地缓存，没有缓存则回退到远程 URL（换机器不用准备文件）；
   " 项目里的 taplo.toml 仍会正常读取
+  let l:schema = {
+  \ 'enabled': l:enabled,
+  \ 'catalogs': [],
+  \ 'links': v:false,
+  \}
+  if l:enabled
+    let l:schema['associations'] = {
+    \ '^(.*(/|\\)Cargo\.toml|Cargo\.toml)$': VimConfigSchemaUri('cargo.json', 'https://json.schemastore.org/cargo.json'),
+    \ '^(.*(/|\\)pyproject\.toml|pyproject\.toml)$': VimConfigSchemaUri('pyproject.json', 'https://json.schemastore.org/pyproject.json'),
+    \ '^(.*(/|\\)\.?rustfmt\.toml|rustfmt\.toml)$': VimConfigSchemaUri('rustfmt.json', 'https://json.schemastore.org/rustfmt.json'),
+    \ '^(.*(/|\\)rust-toolchain(\.toml)?|rust-toolchain(\.toml)?)$': VimConfigSchemaUri('rust-toolchain.json', 'https://json.schemastore.org/rust-toolchain.json'),
+    \}
+  else
+    let l:schema['associations'] = {}
+  endif
   return {
   \ 'activationStatus': v:true,
-  \ 'schema': {
-  \   'enabled': v:true,
-  \   'catalogs': [],
-  \   'links': v:false,
-  \   'associations': {
-  \     '^(.*(/|\\)Cargo\.toml|Cargo\.toml)$': VimConfigSchemaUri('cargo.json', 'https://json.schemastore.org/cargo.json'),
-  \     '^(.*(/|\\)pyproject\.toml|pyproject\.toml)$': VimConfigSchemaUri('pyproject.json', 'https://json.schemastore.org/pyproject.json'),
-  \     '^(.*(/|\\)\.?rustfmt\.toml|rustfmt\.toml)$': VimConfigSchemaUri('rustfmt.json', 'https://json.schemastore.org/rustfmt.json'),
-  \     '^(.*(/|\\)rust-toolchain(\.toml)?|rust-toolchain(\.toml)?)$': VimConfigSchemaUri('rust-toolchain.json', 'https://json.schemastore.org/rust-toolchain.json'),
-  \   },
-  \ },
+  \ 'schema': l:schema,
   \}
 endfunction
 
@@ -80,18 +96,25 @@ endfunction
 " YAML 里 docker-compose 的官方 schema 指向 raw.githubusercontent；本地有缓存
 " 就换成本地 file://（快、离线也能校验），没有则保留远程 URL（正常网络够用）。
 function! s:YamlWorkspaceConfig(name, key) abort
-  let l:schemas = exists('*lsp_settings#utils#load_schemas_map') ? lsp_settings#utils#load_schemas_map(a:name) : {}
-  if filereadable(VimConfigSchemaPath('compose-spec.json'))
-    let l:local_compose = VimConfigSchemaUri('compose-spec.json', '')
-    for [l:url, l:patterns] in items(l:schemas)
-      if l:url =~# 'raw\.githubusercontent\.com/compose-spec/compose-go/'
-        call remove(l:schemas, l:url)
-        let l:schemas[l:local_compose] = l:patterns
-        break
-      endif
-    endfor
+  let l:enabled = s:SchemaEnabled()
+  let l:schemas = {}
+  if l:enabled
+    let l:schemas = exists('*lsp_settings#utils#load_schemas_map') ? lsp_settings#utils#load_schemas_map(a:name) : {}
+    if filereadable(VimConfigSchemaPath('compose-spec.json'))
+      let l:local_compose = VimConfigSchemaUri('compose-spec.json', '')
+      for [l:url, l:patterns] in items(l:schemas)
+        if l:url =~# 'raw\.githubusercontent\.com/compose-spec/compose-go/'
+          call remove(l:schemas, l:url)
+          let l:schemas[l:local_compose] = l:patterns
+          break
+        endif
+      endfor
+    endif
   endif
-  return {'yaml': {'format': {'enable': v:true}, 'validate': v:true, 'schemas': l:schemas}}
+  " schemaStore.enable 是 yaml-language-server 的开关：关闭后连内置 SchemaStore 也停用；
+  " yaml.validate 保持 true，所以 YAML 语法诊断仍然保留
+  return {'yaml': {'format': {'enable': v:true}, 'validate': v:true,
+  \ 'schemas': l:schemas, 'schemaStore': {'enable': l:enabled}}}
 endfunction
 
 " YAML：settings 插件会对 workspace_config 做 merge，把 catalog 里 compose 的
@@ -255,8 +278,56 @@ function! s:ToggleLspService() abort
   endif
 endfunction
 
+function! s:RecomputeSchemaConfig(name) abort
+  if a:name ==# 'vscode-json-language-server'
+    return s:JsonWorkspaceConfig(a:name, 'workspace_config')
+  elseif a:name ==# 'yaml-language-server'
+    return s:YamlWorkspaceConfig(a:name, 'workspace_config')
+  elseif a:name ==# 'taplo-lsp'
+    return s:TaploWorkspaceConfig(a:name, 'workspace_config')
+  endif
+  return {}
+endfunction
+
+" <leader>ls：只开关 schema 校验（JSON/YAML/TOML 的 schema 关联），
+" 不停 LSP server、不影响补全；需要在配置文件里临时关掉 schema 红线时用
+function! s:ToggleSchemaValidation() abort
+  let g:vim_config_schema_validation = s:SchemaEnabled() ? 0 : 1
+  let l:enabled = g:vim_config_schema_validation
+  let l:updated = 0
+  if exists('*lsp#get_server_info')
+    for l:name in ['vscode-json-language-server', 'yaml-language-server', 'taplo-lsp']
+      let l:info = lsp#get_server_info(l:name)
+      if empty(l:info)
+        continue
+      endif
+      let l:config = s:RecomputeSchemaConfig(l:name)
+      if empty(l:config)
+        continue
+      endif
+      " 直接替换成完整 dict，避免原来的 Funcref 让 lsp#update_workspace_config 拒绝工作；
+      " 空 schemas 需要整体替换才能清掉旧的 map
+      let l:info['workspace_config'] = l:config
+      let l:info['_workspace_config_sent'] = v:false
+      if exists('*lsp#is_server_running') && lsp#is_server_running(l:name)
+        try
+          call lsp#update_workspace_config(l:name, {})
+          let l:updated += 1
+        catch
+          " 更新失败也不影响全局开关；server 下次启动会读到新配置
+        endtry
+      endif
+    endfor
+  endif
+  echo printf('Schema 校验：%s（补全 / LSP 服务不受影响%s）',
+        \ l:enabled ? '开启' : '关闭',
+        \ l:updated > 0 ? '，已通知运行中的 server' : '')
+endfunction
+
 command! LspCompletionToggle call s:ToggleLspCompletion()
 command! LspServiceToggle call s:ToggleLspService()
+command! LspSchemaToggle call s:ToggleSchemaValidation()
 nnoremap <leader>lc <Cmd>LspCompletionToggle<CR>
 nnoremap <leader>lx <Cmd>LspServiceToggle<CR>
+nnoremap <leader>ls <Cmd>LspSchemaToggle<CR>
 endif  " g:vim_config_has_lsp

@@ -107,6 +107,7 @@ function! VimConfigCheckLines() abort
       call add(l:lines, '  提示：xml(lemminx) 需要 Java；Arch 执行 ./language-server-add.sh 会自动装 java-runtime')
     endif
     call add(l:lines, '  shellcheck（可选，bash 诊断增强）: ' . (empty(VimConfigCheckExec('shellcheck')) ? '缺失' : 'OK'))
+    call add(l:lines, '  schema 校验: ' . (get(g:, 'vim_config_schema_validation', 1) ? '开启' : '关闭') . '（<leader>ls / :LspSchemaToggle）')
   endif
   call add(l:lines, '')
 
